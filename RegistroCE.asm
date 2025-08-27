@@ -10,15 +10,19 @@ mensaje_menu3      db 13,10, "3. Buscar estudiante por posicion (indice).$"
 mensaje_menu4      db 13,10, "4. Ordenar calificaciones (ascendente/descendente).$"
 mensaje_menu5      db 13,10, "5. Salir.$"
 mensaje_opcion     db 13,10, "Opcion: $"
+mensaje_ingresoDatos db 13,10, "Por favor ingrese su estudiante o digite 9 para salir al menu principal$"
+mensaje_preguntaEstudianteInteresado db 13, 10, "Que estudiante desea mostrar?$"
 mensaje_invalida   db 13,10, "Opcion invalida. Intente de nuevo.$"
-mensaje_despedida  db 13,10, "Gracias por usar Registro CE. Hasta luego.$"
+mensaje_despedida  db 13,10, "Gracias por usar Registro CE.$"       
+
+opcion_usuario db ? ;guarda la opcion elegida por el usuario
 
 .code
 inicio:
     mov ax, @data;regresa la informacion a pantalla o para entrar o salir
     mov ds, ax  ; son las variables registradas en Ensamblador, segmento a una constante x
 
-menu:
+ciclo_principal:
     ; Mostrar menu
     lea dx, mensaje_bienvenida; ubica la direccion del dato*
     mov ah, 09h             ;lo que hace 9h es imprimir el dato
@@ -51,11 +55,14 @@ menu:
     lea dx, mensaje_opcion
     mov ah, 09h
     int 21h
-
-    ; Lee una tecla (con eco). Devuelve ASCII en AL
+                    
+    ;lee la opcion del usuario                
+    ;Lee una tecla (con eco). Devuelve ASCII en AL
     mov ah, 01h
     int 21h
-
+            
+    mov opcion_usuario, al
+    
     ;Compara directamente contra ASCII, se podria cambiar a numero, pero compara caracter contra caracter
     cmp al, '1'
     je  opcion1
@@ -72,23 +79,28 @@ menu:
     lea dx, mensaje_invalida
     mov ah, 09h
     int 21h
-    jmp menu
+    jmp ciclo_principal
 
 opcion1:
+    lea dx, mensaje_ingresoDatos
+    mov ah, 09h
+    int 21h
     
-    jmp menu
+    jmp ciclo_principal
 
 opcion2:
     
-    jmp menu
+    jmp ciclo_principal
 
 opcion3:
-    
-    jmp menu
+    lea dx, mensaje_preguntaEstudianteInteresado
+    mov ah, 09h
+    int 21h
+    jmp ciclo_principal
 
 opcion4:
     
-    jmp menu
+    jmp ciclo_principal
 
 salir:
     lea dx, mensaje_despedida
