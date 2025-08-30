@@ -1,26 +1,26 @@
 .MODEL SMALL
 .STACK 100H
 
-.DATA
-indSize     EQU 30
-grdSize     EQU 10
-indMax      EQU 15
+.DATA ;Constantes principales
+estudiante_tam     EQU 30 ;Tamano maximo para nombre
+notas_tam     EQU 10 ;Tamano maximo para notas
+estudiantesMax      EQU 15 ;Limite de 15 estudiantes
 
-indBuffer  DB indSize
+estudianteBuffer  DB estudiante_tam ;almacenar los nombres de los estudiantes
            DB ?
-           DB indSize+2 DUP(0)
+           DB estudiante_tam+2 DUP(0)
            
-grdBuffer   DB grdSize
+notasBuffer DB notas_tam  ;almacenar las notas
             DB ?
-            DB grdSize+2 DUP(0)
+            DB notas_tam+2 DUP(0)
 
-indLst      DB indMax * (indSize+1) DUP('$')
-grdLst      DB indMax * (grdSize+1) DUP('$')
+estudiantesList DB estudiantesMax * (estudiante_tam+1) DUP('$') ;Lista de nombres de estudiantes
+notasList      DB estudiantesMax * (notas_tam+1) DUP('$') ;Listas de notas
 
 cnt         DB 0
 
 mensageMenu DB 13, 10, 'Bienvenidos/as a Registro CE', 13, 10
-            DB      'Digite:',  13, 10
+            DB      'Elegir:',  13, 10
             DB      '1. Ingresar calificaciones (hasta 15 estudiantes)', 13, 10
             DB      '2. Mostrar estadisticas', 13, 10
             DB      '3. Buscar estudiante por posicion (indice)', 13, 10 
@@ -28,29 +28,29 @@ mensageMenu DB 13, 10, 'Bienvenidos/as a Registro CE', 13, 10
             DB      '5. Listas de estudiantes guardados', 13, 10
             DB      '0. Salir', 13, 10
             DB      '                                                     ', 13, 10
-            DB      'Input: $'
+            DB      'Digite: $'
 
 mensaje_ingresoNombre DB 13, 10, 'Ingresar Nombre Apellido1 Apellido2: $'
 mensage_ingresoNota   DB 13, 10, 'Ingresar nota: $'
 mensage_Lista  DB 13, 10, 'Lista de Estudiantes guardados:', 13, 10, '-------------------', 13, 10, '$'
-titulos DB 'No.  Nombre', 9,9,'Nota$'
+titulos DB 'Numero  Nombres', 9,9,'Notas$'
 newline   DB 13, 10, '$'
 tab       DB 09h, '$'
 
-mensaje_invalida  DB 13, 10, 'Opcion invalida! Presione cualquier tecla...$'  ;cambiar
-mensaje_estudiantesmaximos DB 13, 10, 'Maximo de estudiantes alcanzado!$'
-msgPresioneTecla DB 13, 10, 'Presione cualquier tecla para continuar...$'
-debug_msg db 13,10,"Procesado: $"  
+mensaje_invalida  DB 13, 10, 'Opcion invalida!'  ;cambiar
+mensaje_estudiantesmaximos DB 13, 10, 'El limite de estudiantes ya fue alcanzado$'
+msgPresioneTecla DB 13, 10, 'Presione cualquier tecla$'
+mensaje_procesar db 13,10,"Procesado: $"  
 mensajes_aprobados db 'Porcentaje de aprobados: $'
 mensajes_reprobados db 13,10,'Porcentaje de reprobados: $' 
   
-msgSolicitarID DB 13, 10, 'Ingrese el numero del estudiante: $'
-msgIDInvalido DB 13, 10, 'ID invalido o estudiante no existe!', 13, 10, '$'
-msgEncontrado DB 13, 10, 'Estudiante encontrado:', 13, 10, '$'  
+mensaje_posicion DB 13, 10, 'Que estudiante desea mostrar?:  $'
+mensaje_invalidaposicion DB 13, 10, 'Posicion invalida. No hay estudiante en esa posicion.', 13, 10, '$'
+mensaje_mostrar_dato DB 13, 10, 'Datos del estudiante:', 13, 10, '$'  
   
-; Arrays para almacenar los resultados
-enteros_array    dw indMax dup(0)        ; Array de enteros (16 bits)
-decimales_array  dw indMax * 2 dup(0)    ; Array de decimales (indMax * 32 bits)
+; Arreglos para almacenar los resultados
+notasenteros_array    dw estudiantesMax dup(0)        ;Parte entera de las notas  (16 bits)
+notasdecimales_array  dw estudiantesMax * 2 dup(0)    ;Parte decimal de las notas  (estudiantesMax * 32 bits)
 ; Variables temporales 
 entero_temp dw 0
 decimal_temp dw 2 dup(0)         ; 32 bits (2 words: parte baja + parte alta)
@@ -135,7 +135,7 @@ AgregarEstudiante PROC
     PUSH AX
     
     MOV AL, cnt
-    CMP AL, indMax
+    CMP AL, estudiantesMax
     JL  PuedeAgregar
     
     MOV AH, 09h
@@ -170,24 +170,24 @@ InputProc PROC
     INT 21h
     
     ; Leer nombre con INT 21h/0Ah
-    MOV indBuffer, indSize  ; Maximo de caracteres a leer (indSize es una costante)
-    LEA DX, indBuffer       ; Carga la direccion del buffer donde se guardara el nombre
+    MOV estudianteBuffer, estudiante_tam  ; Maximo de caracteres a leer (indSize es una costante)
+    LEA DX, estudianteBuffer       ; Carga la direccion del buffer donde se guardara el nombre
     MOV AH, 0Ah
     INT 21h
     
     ; Terminar cadena con '$'
     XOR BX, BX              ; Limpia el valor de BX
-    MOV BL, indBuffer[1]    ; Numero de caracteres leidos se guardan en BL, valor de indSize
-    MOV indBuffer[BX+2], '$'; Agregar indicador de finalizacion al final 
+    MOV BL, estudianteBuffer[1]    ; Numero de caracteres leidos se guardan en BL, valor de indSize
+    MOV estudianteBuffer[BX+2], '$'; Agregar indicador de finalizacion al final 
     
     ; Copiar nombre a la lista
     XOR AX, AX              ; Limpia el valor de AX
     MOV AL, cnt
-    MOV BL, indSize+1
+    MOV BL, estudiante_tam+1
     MUL BL                  ; AX = AL * BL = cnt * (indSize+1) ---> Se almacena en AX
-    LEA DI, indLst          ; DI (Destination Index) apunta al inicio de array indLst
+    LEA DI, estudiantesList ; DI (Destination Index) apunta al inicio de array indLst
     ADD DI, AX              ; Se adiciona para mover el cursos al guardar la data
-    LEA SI, indBuffer + 2   ; Saltar los primeros 2 bytes del buffer, se almacena el inicio de nombre en SI (source index)
+    LEA SI, estudianteBuffer + 2   ; Saltar los primeros 2 bytes del buffer, se almacena el inicio de nombre en SI (source index)
     CALL CopiarCadena
 
     ; Pedir nota
@@ -196,24 +196,24 @@ InputProc PROC
     INT 21h
 
     ; Leer nota
-    MOV grdBuffer, grdSize
-    LEA DX, grdBuffer
+    MOV notasBuffer, notas_tam
+    LEA DX, notasBuffer
     MOV AH, 0Ah
     INT 21h
     
     ; Terminar cadena con '$'
     XOR BX, BX
-    MOV BL, grdBuffer[1]
-    MOV grdBuffer[BX+2], '$'
+    MOV BL, notasBuffer[1]
+    MOV notasBuffer[BX+2], '$'
     
     ; Copiar nota a la lista
     XOR AX, AX
     MOV AL, cnt
-    MOV BL, grdSize+1
+    MOV BL, notas_tam+1
     MUL BL
-    LEA DI, grdLst
+    LEA DI, notasList
     ADD DI, AX
-    LEA SI, grdBuffer + 2
+    LEA SI, notasBuffer + 2
     CALL CopiarCadena
 
     ; Incrementar contador
@@ -239,7 +239,7 @@ SearchInd PROC
     
     ; Promt
     MOV AH, 09h
-    LEA DX, msgSolicitarID
+    LEA DX, mensaje_posicion
     INT 21h
     
     ; ID read
@@ -266,7 +266,7 @@ SearchInd PROC
     
 IDInvalidoBusqueda:
     MOV AH, 09h
-    LEA DX, msgIDInvalido
+    LEA DX, mensaje_invalidaposicion
     INT 21h
     MOV AH, 01h
     INT 21h
@@ -290,7 +290,7 @@ DisplayInd PROC
     XOR BX, BX
     MOV BL, AL
     
-    ; Display ID
+    ; Display IDdo
     MOV AH, 02h
     MOV DL, BL
     ADD DL, '1'
@@ -302,9 +302,9 @@ DisplayInd PROC
     
     ; Display name
     MOV AL, BL
-    MOV CL, indSize+1
+    MOV CL, estudiante_tam+1
     MUL CL           ; AX = AL * CL
-    LEA SI, indLst
+    LEA SI, estudiantesList
     ADD SI, AX
     CALL ImprimirCadena
     
@@ -315,9 +315,9 @@ DisplayInd PROC
     
     ; Display grade
     MOV AL, BL
-    MOV AH, grdSize+1
+    MOV AH, notas_tam+1
     MUL AH           ; AX = AL * AH
-    LEA SI, grdLst
+    LEA SI, notasList
     ADD SI, AX
     CALL ImprimirCadena
     
@@ -335,7 +335,7 @@ DisplayInd ENDP
     
 IDInvalido:
     MOV AH, 09h
-    LEA DX, msgIDInvalido
+    LEA DX, mensaje_invalidaposicion
     INT 21h
 
 
@@ -407,9 +407,9 @@ MostrarEstudiante:
     
     ; Mostrar nombre
     MOV AL, BL
-    MOV CL, indSize+1
+    MOV CL, estudiante_tam+1
     MUL CL  ; AX = AL * CL
-    LEA SI, indLst
+    LEA SI, estudiantesList
     ADD SI, AX
     CALL ImprimirCadena
     
@@ -420,9 +420,9 @@ MostrarEstudiante:
     
     ; Mostrar nota
     MOV AL, BL
-    MOV AH, grdSize+1
+    MOV AH, notas_tam+1
     MUL AH
-    LEA SI, grdLst
+    LEA SI, notasList
     ADD SI, AX
     CALL ImprimirCadena
     
@@ -524,9 +524,9 @@ separar_numeros_func proc
     push di
     
     ; Inicializar indices
-    mov si, offset grdLst
-    mov di, offset enteros_array
-    mov bx, offset decimales_array
+    mov si, offset notasList
+    mov di, offset notasenteros_array
+    mov bx, offset notasdecimales_array
     mov cx, 0                      ; Contador de numeros
     
 procesar_numero:
@@ -639,10 +639,10 @@ fin_numero:
     push ax
     push dx
     mov ax, cx               ; AX = numero actual (1, 2, 3...)
-    mov dx, grdSize
+    mov dx, notas_tam
     inc dx                   ; DX = 11 (grdSize + 1)
     mul dx                   ; AX = cx * 11
-    mov si, offset grdLst
+    mov si, offset notasList
     add si, ax               ; SI apunta al inicio del siguiente string
     pop dx
     pop ax
@@ -670,7 +670,7 @@ ciclo_notas:
     cmp cl,0
     je fin_ciclo
 
-    mov ax, enteros_array[si] ; cargar nota
+    mov ax, notasenteros_array[si] ; cargar nota
     cmp ax,70
     jl es_reprobado
 
