@@ -1038,25 +1038,32 @@ PrintNum3Digitos PROC
     push cx
     push dx
 
-    mov cx, 0
-    mov bx, 10
-
+    ; Manejar caso especial de 0
     cmp ax, 0
-    jne PN3_ConvLoop
-    ; Si es 0, imprimir '0'
+    jne PN3_NotZero
     mov dl, '0'
     mov ah, 02h
     int 21h
     jmp PN3_Fin
 
+PN3_NotZero:
+    ; Para números 1-100, usar división por 10
+    mov bx, ax          ; Guardar número original
+    mov cx, 0           ; Contador de dígitos
+    
+    ; Convertir a dígitos (en orden inverso)
 PN3_ConvLoop:
     xor dx, dx
-    div bx
-    push dx
-    inc cx
+    mov ax, bx
+    mov bx, 10
+    div bx              ; AX = cociente, DX = residuo
+    push dx             ; Guardar dígito en stack
+    inc cx              ; Contar dígito
+    mov bx, ax          ; Preparar para siguiente iteración
     cmp ax, 0
     jne PN3_ConvLoop
 
+    ; Imprimir dígitos (en orden correcto)
 PN3_PrintLoop:
     pop dx
     add dl, '0'
@@ -1098,7 +1105,7 @@ ME_HayEstudiantes:
     ; Calcular estadisticas
     CALL CalcularEstadisticas
 
-    ; TÃ­tulo
+    ; Título
     mov ah, 09h
     lea dx, mensaje_estadisticas
     int 21h
@@ -1112,11 +1119,12 @@ ME_HayEstudiantes:
     xor ax, ax
     mov al, aprobados
     mov bl, 100
-    mul bl
+    mul bl              ; AX = aprobados * 100
+    xor dx, dx          ; Limpiar DX para división
     xor bx, bx
     mov bl, cnt
-    div bl
-    call PrintNum2Digitos
+    div bx              ; AX = resultado, DX = residuo
+    call PrintNum3Digitos  ; Cambiar a 3 dígitos para manejar 100%
     mov dl, '%'
     mov ah, 02h
     int 21h
@@ -1130,11 +1138,12 @@ ME_HayEstudiantes:
     xor ax, ax
     mov al, desaprobados
     mov bl, 100
-    mul bl
+    mul bl              ; AX = reprobados * 100
+    xor dx, dx          ; Limpiar DX para división
     xor bx, bx
     mov bl, cnt
-    div bl
-    call PrintNum2Digitos
+    div bx              ; AX = resultado
+    call PrintNum3Digitos  ; Cambiar a 3 dígitos para manejar 100%
     mov dl, '%'
     mov ah, 02h
     int 21h
@@ -1146,14 +1155,14 @@ ME_HayEstudiantes:
     mov ax, promedio_entero
     call PrintNum3Digitos
 
-    ; Mostrar nota mÃ¡xima
+    ; Mostrar nota máxima
     mov ah, 09h
     lea dx, mensaje_nota_maxima
     int 21h
     mov ax, nota_max_int
     call PrintNum3Digitos
 
-    ; Mostrar nota mÃ­nima
+    ; Mostrar nota mínima
     mov ah, 09h
     lea dx, mensaje_nota_minima
     int 21h
@@ -1481,19 +1490,40 @@ OR_INNER:
     mov si, [bp]               ; nodo A
     mov di, [bp+2]             ; nodo B
 
-    ; ComparaciÃ³n completa de notas
+    ; Comparación completa de notas
     call CompareGrades         ; retorna CF=1 si A < B
     
     cmp orderMode, '1'         ; ASC
     je  OR_ASC_CHECK
     
-    ; DESC - intercambiar si A < B (queremos B < A)
+    ; DESC - intercambiar si A < B (queremos mayor a menor)
     jc  OR_SWAP
     jmp OR_ADV
 
 OR_ASC_CHECK:
-    ; ASC - intercambiar si A > B 
-    jnc OR_ADV                 ; si A <= B, no intercambiar
+    ; ASC - intercambiar si A > B (CF=0 y A != B)
+    ; Si CF=1, A < B, no intercambiar (está bien ordenado)
+    ; Si CF=0, A >= B, necesitamos verificar si A > B para intercambiar
+    jc  OR_ADV                 ; Si A < B, no intercambiar
+    
+    ; Verificar si A == B comparando todos los valores
+    mov ax, [si+GINT_OFF]
+    mov bx, [di+GINT_OFF]
+    cmp ax, bx
+    jne OR_SWAP                ; Si enteros diferentes, A > B, intercambiar
+    
+    mov ax, [si+GDHI_OFF]
+    mov bx, [di+GDHI_OFF]
+    cmp ax, bx
+    jne OR_SWAP                ; Si decimales altos diferentes, A > B, intercambiar
+    
+    mov ax, [si+GDLO_OFF]
+    mov bx, [di+GDLO_OFF]
+    cmp ax, bx
+    jne OR_SWAP                ; Si decimales bajos diferentes, A > B, intercambiar
+    
+    ; Si llegamos aquí, A == B, no intercambiar
+    jmp OR_ADV
 
 OR_SWAP:
     ; Intercambiar punteros en el array
@@ -1516,7 +1546,7 @@ OR_REBUILD:
     call RebuildLinkedList
 
 OR_SHOW:
-    ; Mostrar lista despues de ordenar
+    ; Mostrar lista después de ordenar
     CALL MostrarListaCompleta
 
 OR_DONE:
