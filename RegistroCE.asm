@@ -42,6 +42,20 @@ mensaje_ordenar             DB 13,10,'Como desea ordenar las calificaciones',13,
                             DB '1. Asc',13,10,'2. Des',13,10,'$' 
 orderMode DB 0              ; '1' asc, '2' des
 
+; ------------------ Mensajes de Validacion ------------------
+; Validacion de nombres
+mensaje_nombre_invalido     DB 13,10,'ERROR: Debe ingresar exactamente 3 palabras (Nombre Apellido1 Apellido2)$'
+mensaje_palabra_invalida    DB 13,10,'ERROR: Solo se permiten letras en el nombre$'
+mensaje_palabra_corta       DB 13,10,'ERROR: Cada palabra debe tener al menos 2 caracteres$'
+mensaje_linea_vacia         DB 13,10,'ERROR: La linea no puede estar vacia$'
+mensaje_formato_linea       DB 13,10,'ERROR: Formato incorrecto. Use: Nombre Apellido1 Apellido2 Nota$'
+
+; Validacion de notas
+mensaje_nota_invalida       DB 13,10,'ERROR: La nota debe estar entre 0 y 100$'
+mensaje_decimales_invalidos DB 13,10,'ERROR: Maximo 5 decimales permitidos$'
+mensaje_formato_invalido    DB 13,10,'ERROR: Formato invalido. Use solo numeros y punto decimal$'
+mensaje_reintentar          DB 13,10,'Presione cualquier tecla para reintentar...$'
+
 ; ------------------ Mensajes de Estadisticas ----------------
 mensaje_estadisticas        DB 13,10,'=== ESTADISTICAS ===',13,10,'$'
 mensajes_aprobados         DB 'Porcentaje de aprobados: $'
@@ -87,6 +101,7 @@ entero_temp         DW 0
 dec_temp_lo         DW 0
 dec_temp_hi         DW 0
 dec_count           DB 0
+decimal_encontrado  DB 0
 
 ; Swap por bloque: NAME+NOTE+gInt+gDecLo+gDecHi = 48 bytes
 TEMP_BLOCK_LEN      EQU (31+11+2+2+2)
@@ -193,7 +208,7 @@ TerminarCadena0Ah PROC
     push si
     mov si, dx
     mov bl, [si+1]                 ; len
-    xor bh, bh                     ; *** importante: BH=0 para usar BX como desplazamiento
+    xor bh, bh                     ; importante: BH=0
     mov byte ptr [si+2+bx], '$'    ; fin '$'
     pop si
     pop bx
@@ -216,11 +231,267 @@ GetNodeByIndex PROC
 GetNodeByIndex ENDP
 
 ; ============================================================
-; Parseo de nota ASCII a (entero, decimos escalados a 5 digitos)
-; Guarda en nodo: [DI]=gInt, [DI+2]=gDecLo, [DI+4]=gDecHi
+; VALIDACION DEL NOMBRE COMPLETO
+; Valida que la cadena tenga exactamente 3 palabras válidas
+; ENTRADA: SI apunta al string del nombre completo
+; SALIDA: AL = 1 si válido, AL = 0 si inválido
+; ============================================================    
+
+ValidarNombreCompleto PROC
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    
+    ; Inicializar contador de palabras
+    xor cx, cx          ; CX = contador de palabras
+    mov bx, 0          ; BX = longitud de palabra actual
+    
+    ; Saltar espacios iniciales
+VNC_SaltarEspacios:
+    mov al, [si]
+    cmp al, '$'
+    je VNC_FinCadena
+    cmp al, 13
+    je VNC_FinCadena
+    cmp al, 10
+    je VNC_FinCadena
+    cmp al, ' '
+    jne VNC_IniciarPalabra
+    inc si
+    jmp VNC_SaltarEspacios
+
+VNC_IniciarPalabra:
+    ; Nueva palabra encontrada
+    mov bx, 0          ; Reiniciar contador de caracteres
+
+VNC_LeerPalabra:
+    mov al, [si]
+    cmp al, '$'
+    je VNC_FinPalabra
+    cmp al, 13
+    je VNC_FinPalabra
+    cmp al, 10
+    je VNC_FinPalabra
+    cmp al, ' '
+    je VNC_FinPalabra
+    
+    ; Verificar que sea letra
+    cmp al, 'A'
+    jb VNC_CaracterInvalido
+    cmp al, 'Z'
+    jbe VNC_EsLetra
+    cmp al, 'a'
+    jb VNC_CaracterInvalido
+    cmp al, 'z'
+    ja VNC_CaracterInvalido
+
+VNC_EsLetra:
+    inc bx             ; Contar caracter
+    inc si
+    jmp VNC_LeerPalabra
+
+VNC_FinPalabra:
+    ; Verificar que la palabra tenga al menos 2 caracteres
+    cmp bx, 2
+    jb VNC_PalabraCorta
+    
+    ; Incrementar contador de palabras
+    inc cx
+    
+    ; Si no hemos llegado al final, buscar siguiente palabra
+    mov al, [si]
+    cmp al, '$'
+    je VNC_FinCadena
+    cmp al, 13
+    je VNC_FinCadena
+    cmp al, 10
+    je VNC_FinCadena
+    
+    ; Saltar espacios entre palabras
+    jmp VNC_SaltarEspacios
+
+VNC_FinCadena:
+    ; Verificar que tengamos exactamente 3 palabras
+    cmp cx, 3
+    je VNC_NombreValido
+    
+    ; No son 3 palabras
+    mov ah, 09h
+    lea dx, mensaje_nombre_invalido
+    int 21h
+    mov al, 0
+    jmp VNC_Fin
+
+VNC_CaracterInvalido:
+    mov ah, 09h
+    lea dx, mensaje_palabra_invalida
+    int 21h
+    mov al, 0
+    jmp VNC_Fin
+
+VNC_PalabraCorta:
+    mov ah, 09h
+    lea dx, mensaje_palabra_corta
+    int 21h
+    mov al, 0
+    jmp VNC_Fin
+
+VNC_NombreValido:
+    mov al, 1
+
+VNC_Fin:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    ret
+ValidarNombreCompleto ENDP
+
+; ============================================================
+; VALIDACIÓN DE NOTA
+; Valida que la nota este en rango 0-100 y maximo 5 decimales
+; ENTRADA: SI apunta al string de la nota
+; SALIDA: AL = 1 si válida, AL = 0 si invalida
+; ============================================================
+ValidarNota PROC
+    push bx
+    push cx
+    push dx
+    push si
+    
+    ; Reiniciar variables
+    mov entero_temp, 0
+    mov dec_temp_lo, 0
+    mov dec_temp_hi, 0
+    mov decimal_encontrado, 0
+    mov dec_count, 0
+    
+    ; Verificar si el string está vacío
+    cmp BYTE PTR [si], '$'
+    je VN_NotaInvalida
+    cmp BYTE PTR [si], 13
+    je VN_NotaInvalida
+    
+VN_ValidarEntero:
+    mov al, [si]
+    cmp al, '$'
+    je VN_FinValidacion
+    cmp al, 13
+    je VN_FinValidacion
+    cmp al, 10
+    je VN_FinValidacion
+    cmp al, '.'
+    je VN_ValidarDecimal
+    
+    ; Verificar que sea dígito
+    cmp al, '0'
+    jb VN_FormatoInvalido
+    cmp al, '9'
+    ja VN_FormatoInvalido
+    
+    ; Convertir y acumular
+    sub al, '0'
+    mov ah, 0
+    push ax
+    
+    ; entero_temp = entero_temp * 10
+    mov ax, entero_temp
+    mov dx, 10
+    mul dx
+    mov entero_temp, ax
+    
+    ; entero_temp = entero_temp + digito
+    pop ax
+    add entero_temp, ax
+    
+    ; Verificar que no exceda 100 en la parte entera
+    cmp entero_temp, 100
+    ja VN_NotaFueraRango
+    
+    inc si
+    jmp VN_ValidarEntero
+
+VN_ValidarDecimal:
+    mov decimal_encontrado, 1
+    inc si
+    
+VN_ValidarDecimales:
+    mov al, [si]
+    cmp al, '$'
+    je VN_FinValidacion
+    cmp al, 13
+    je VN_FinValidacion
+    cmp al, 10
+    je VN_FinValidacion
+    
+    ; Verificar que sea dígito
+    cmp al, '0'
+    jb VN_FormatoInvalido
+    cmp al, '9'
+    ja VN_FormatoInvalido
+    
+    ; Incrementar contador de decimales
+    mov al, dec_count
+    inc al
+    mov dec_count, al
+    cmp al, 5
+    ja VN_DemasiadosDecimales
+    
+    inc si
+    jmp VN_ValidarDecimales
+
+VN_FinValidacion:
+    ; Verificar rango final (0-100)
+    cmp entero_temp, 100
+    ja VN_NotaFueraRango
+    
+    ; Si llega aqui, la nota es valida
+    mov al, 1
+    jmp VN_FinValidarNota
+
+VN_NotaFueraRango:
+    mov ah, 09h
+    lea dx, mensaje_nota_invalida
+    int 21h
+    mov al, 0
+    jmp VN_FinValidarNota
+
+VN_DemasiadosDecimales:
+    mov ah, 09h
+    lea dx, mensaje_decimales_invalidos
+    int 21h
+    mov al, 0
+    jmp VN_FinValidarNota
+
+VN_FormatoInvalido:
+    mov ah, 09h
+    lea dx, mensaje_formato_invalido
+    int 21h
+    mov al, 0
+    jmp VN_FinValidarNota
+
+VN_NotaInvalida:
+    mov ah, 09h
+    lea dx, mensaje_formato_invalido
+    int 21h
+    mov al, 0
+
+VN_FinValidarNota:
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    ret
+ValidarNota ENDP
+
+; ============================================================
+; Recorrido de nota ASCII a (entero, decimales escalados a 5 digitos)
 ; ENTRADA: SI -> cadena de nota '$'-terminada
 ;          DI -> destino gInt
-; ------------------------------------------------------------
+; ============================================================
 ParseAsciiGradeToNode PROC
     push ax
     push bx
@@ -250,7 +521,7 @@ P_IntLoop:
     mov ax, entero_temp
     mov bx, 10
     mul bx           ; DX:AX = entero_temp*10
-    ; sumar digito (en BL) asegurando BH=0
+    ; sumar digito
     mov bl, [si]
     sub bl, '0'
     xor bh, bh
@@ -341,6 +612,178 @@ P_Finish:
 ParseAsciiGradeToNode ENDP
 
 ; ============================================================
+; RECORRIDO Y VALIDACION DE LINEA COMPLETA
+; Separa nombre y nota Y valida ambos
+; ENTRADA: SI apunta a la linea completa
+; SALIDA: CF=0 si éxito, CF=1 si error
+; ============================================================
+ParseLineaNombreNota PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+    push bp
+    
+    ; Guardar SI original en el stack para restaurarlo después
+    mov bp, sp
+    mov [bp-2], si
+    push si
+    
+    ; Verificar que la linea no este vacia
+    mov al, [si]
+    cmp al, '$'
+    je PL_LineaVacia
+    cmp al, 13
+    je PL_LineaVacia
+    cmp al, 10
+    je PL_LineaVacia
+    
+    ; Buscar el final de la linea
+    mov di, si
+PL_FindEnd:
+    mov al, [di]
+    cmp al, '$'
+    je  PL_HaveEnd
+    inc di
+    jmp PL_FindEnd
+
+PL_HaveEnd:
+    dec di
+
+    ; Recortar espacios al final
+PL_TrimEnd:
+    cmp di, si
+    jb  PL_FormatoIncorrecto
+    mov al, [di]
+    cmp al, ' '
+    jne PL_FindSplit
+    dec di
+    jmp PL_TrimEnd
+
+    ; Buscar el último espacio (separador nombre-nota)
+PL_FindSplit:
+    mov bx, di
+PL_FindSpaceBack:
+    cmp bx, si
+    jbe PL_FormatoIncorrecto
+    mov al, [bx]
+    cmp al, ' '
+    je  PL_SplitFound
+    dec bx
+    jmp PL_FindSpaceBack
+
+PL_SplitFound:
+    mov dx, bx          ; DX apunta al espacio separador
+    inc bx              ; BX apunta al inicio de la nota
+
+    ; Saltar espacios antes de la nota
+PL_TrimNoteStart:
+    mov al, [bx]
+    cmp al, ' '
+    jne PL_NoteStartOK
+    inc bx
+    jmp PL_TrimNoteStart
+
+PL_NoteStartOK:
+    ; Copiar la nota al buffer
+    lea di, notasBuffer+2
+PL_CopyNote:
+    mov al, [bx]
+    cmp al, '$'
+    je  PL_EndCopyNote
+    mov [di], al
+    inc di
+    inc bx
+    jmp PL_CopyNote
+PL_EndCopyNote:
+    mov byte ptr [di], '$'
+
+    ; Validar la nota
+    lea si, notasBuffer+2
+    call ValidarNota
+    cmp al, 1
+    jne PL_NotaInvalida
+
+    ; Restaurar SI original y preparar para copiar el nombre
+    pop si
+    push si
+    mov bx, dx          ; BX apunta al espacio separador
+    dec bx              ; BX apunta al último carácter del nombre
+
+    ; Recortar espacios al final del nombre
+PL_TrimNameEnd:
+    cmp bx, si
+    jb  PL_FormatoIncorrecto
+    mov al, [bx]
+    cmp al, ' '
+    jne PL_NameEndOK
+    dec bx
+    jmp PL_TrimNameEnd
+
+PL_NameEndOK:
+    ; Copiar el nombre al buffer
+    lea di, estudianteBuffer+2
+PL_CopyName:
+    mov al, [si]
+    cmp si, bx
+    ja  PL_EndCopyName
+    mov [di], al
+    inc di
+    inc si
+    jmp PL_CopyName
+PL_EndCopyName:
+    mov byte ptr [di], '$'
+
+    ; Validar el nombre completo
+    lea si, estudianteBuffer+2
+    call ValidarNombreCompleto
+    cmp al, 1
+    jne PL_NombreInvalido
+
+    ; Si llegamos aquí, tanto nombre como nota son válidos
+    pop si
+    clc                 ; CF = 0 (éxito)
+    jmp PL_Fin
+
+PL_LineaVacia:
+    mov ah, 09h
+    lea dx, mensaje_linea_vacia
+    int 21h
+    pop si
+    stc                 ; CF = 1 (error)
+    jmp PL_Fin
+
+PL_FormatoIncorrecto:
+    mov ah, 09h
+    lea dx, mensaje_formato_linea
+    int 21h
+    pop si
+    stc                 ; CF = 1 (error)
+    jmp PL_Fin
+
+PL_NotaInvalida:
+    ; El mensaje de error ya se mostró en ValidarNota
+    pop si
+    stc                 ; CF = 1 (error)
+    jmp PL_Fin
+
+PL_NombreInvalido:
+    ; El mensaje de error ya se mostró en ValidarNombreCompleto
+    pop si
+    stc                 ; CF = 1 (error)
+
+PL_Fin:
+    pop bp
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+ParseLineaNombreNota ENDP
+
+; ============================================================
 ; Construir array de punteros desde la lista enlazada
 ; ============================================================
 BuildNodeArray PROC
@@ -423,7 +866,7 @@ RLL_END:
 RebuildLinkedList ENDP
 
 ; ============================================================
-; Calcular Estadísticas
+; Calcular Estadisticas
 ; ============================================================
 CalcularEstadisticas PROC
     push ax
@@ -534,7 +977,6 @@ CE_FinLoop:
     mov bl, cnt
     div bx
     mov promedio_entero, ax
-    ; El residuo en DX podría usarse para decimales
 
     pop di
     pop si
@@ -555,8 +997,8 @@ CE_NoEstudiantes:
 CalcularEstadisticas ENDP
 
 ; ============================================================
-; Imprimir número de 2 dígitos (0-99)
-; Entrada: AL = número
+; Imprimir numero de 2 digitos (0-99)
+; Entrada: AL = numero
 ; ============================================================
 PrintNum2Digitos PROC
     push ax
@@ -631,7 +1073,7 @@ PN3_Fin:
 PrintNum3Digitos ENDP
 
 ; ============================================================
-; Mostrar Estadísticas
+; Mostrar Estadisticas
 ; ============================================================
 MostrarEstadisticas PROC
     push ax
@@ -650,10 +1092,10 @@ MostrarEstadisticas PROC
     mov ah, 09h
     lea dx, mensaje_sin_estudiantes
     int 21h
-    jmp ME_Fin
+    jmp ME_FinMostrar
 
 ME_HayEstudiantes:
-    ; Calcular estadísticas
+    ; Calcular estadisticas
     CALL CalcularEstadisticas
 
     ; Título
@@ -718,7 +1160,7 @@ ME_HayEstudiantes:
     mov ax, nota_min_int
     call PrintNum3Digitos
 
-ME_Fin:
+ME_FinMostrar:
     mov ah, 09h
     lea dx, msgPresioneTecla
     int 21h
@@ -733,8 +1175,8 @@ ME_Fin:
 MostrarEstadisticas ENDP
 
 ; ============================================================
-; Buscar por posicion (1..cnt)  (entrada de un solo digito)
-; ------------------------------------------------------------
+; Buscar por posicion (1..cnt)
+; ============================================================
 SearchInd PROC
     push ax
     push bx
@@ -825,9 +1267,9 @@ PauseExit:
     ret
 SearchInd ENDP
 
-; ------------------------------------------------------------
-; Opcion 1: ingreso por línea completa o '9' para volver
-; ------------------------------------------------------------
+; ===========================================================
+; Opcion 1: ingreso por linea completa CON VALIDACIONES
+; ============================================================
 Opcion1:
     CALL ClrScreen
 IngresarLoop:
@@ -835,143 +1277,48 @@ IngresarLoop:
     lea dx, prompt_linea
     int 21h
 
+    ; Leer linea completa
     mov ah, 0Ah
     lea dx, lineBuffer
     int 21h
 
+    ; Terminar cadena con '
     lea dx, lineBuffer
     call TerminarCadena0Ah
 
+    ; Verificar si quiere salir ('9')
     mov si, offset lineBuffer
-    mov bl, [si+1]
+    mov bl, [si+1]      ; longitud
     cmp bl, 1
     jne NoSalir9
-    mov al, [si+2]
+    mov al, [si+2]      ; primer caracter
     cmp al, '9'
     je  FinOpcion1
 NoSalir9:
 
-    lea si, [si+2]
+    ; Recorrer y validar linea
+    lea si, [si+2]      ; apuntar a los datos
     call ParseLineaNombreNota
-    jc  IngresarLoop
+    jc  MostrarErrorYReintentar    ; Si hay error, reintentar
 
+    ; Si es valida, agregar el estudiante
     call AgregarDesdeBuffers
+    jmp IngresarLoop
+
+MostrarErrorYReintentar:
+    mov ah, 09h
+    lea dx, mensaje_reintentar
+    int 21h
+    mov ah, 01h
+    int 21h
     jmp IngresarLoop
 
 FinOpcion1:
     jmp MainMenu
 
-; ------------------------------------------------------------
-; ParseLineaNombreNota (separa nombre y nota)
-; ------------------------------------------------------------
-ParseLineaNombreNota PROC
-    push ax
-    push bx
-    push cx
-    push dx
-    push di
-
-    mov di, si
-PL_FindEnd:
-    mov al, [di]
-    cmp al, '$'
-    je  PL_HaveEnd
-    inc di
-    jmp PL_FindEnd
-
-PL_HaveEnd:
-    dec di
-
-PL_TrimEnd:
-    cmp di, si
-    jb  PL_Fail
-    mov al, [di]
-    cmp al, ' '
-    jne PL_FindSplit
-    dec di
-    jmp PL_TrimEnd
-
-PL_FindSplit:
-    mov bx, di
-PL_FindSpaceBack:
-    cmp bx, si
-    jbe PL_Fail
-    mov al, [bx]
-    cmp al, ' '
-    je  PL_SplitFound
-    dec bx
-    jmp PL_FindSpaceBack
-
-PL_SplitFound:
-    mov dx, bx
-    inc bx
-
-PL_TrimNoteStart:
-    mov al, [bx]
-    cmp al, ' '
-    jne PL_NoteStartOK
-    inc bx
-    jmp PL_TrimNoteStart
-
-PL_NoteStartOK:
-    lea di, notasBuffer+2
-PL_CopyNote:
-    mov al, [bx]
-    cmp al, '$'
-    je  PL_EndCopyNote
-    mov [di], al
-    inc di
-    inc bx
-    jmp PL_CopyNote
-PL_EndCopyNote:
-    mov byte ptr [di], '$'
-
-    mov bx, dx
-    dec bx
-
-PL_TrimNameEnd:
-    cmp bx, si
-    jb  PL_Fail
-    mov al, [bx]
-    cmp al, ' '
-    jne PL_NameEndOK
-    dec bx
-    jmp PL_TrimNameEnd
-
-PL_NameEndOK:
-    lea di, estudianteBuffer+2
-PL_CopyName:
-    mov al, [si]
-    cmp si, bx
-    ja  PL_EndCopyName
-    mov [di], al
-    inc di
-    inc si
-    jmp PL_CopyName
-PL_EndCopyName:
-    mov byte ptr [di], '$'
-
-    clc
-    pop di
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-
-PL_Fail:
-    stc
-    pop di
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-ParseLineaNombreNota ENDP
-
-; ------------------------------------------------------------
+; ============================================================
 ; AgregarDesdeBuffers: usa estudianteBuffer/notasBuffer
-; ------------------------------------------------------------
+; ============================================================
 AgregarDesdeBuffers PROC
     push ax
     push bx
@@ -1032,55 +1379,6 @@ ADB_endAdd:
 AgregarDesdeBuffers ENDP
 
 ; ============================================================
-; SwapNodeData: intercambio en bloque (48 bytes) sin tocar NEXT
-; ENTRADA: DI = base nodo A, SI = base nodo B
-; ============================================================
-SwapNodeData PROC
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-
-    mov bx, di         ; BX = A
-    mov dx, si         ; DX = B
-
-    ; A -> swap_block
-    mov si, bx
-    add si, NAME_OFF
-    mov di, offset swap_block
-    mov cx, TEMP_BLOCK_LEN
-    cld
-    rep movsb
-
-    ; B -> A
-    mov si, dx
-    add si, NAME_OFF
-    mov di, bx
-    add di, NAME_OFF
-    mov cx, TEMP_BLOCK_LEN
-    cld
-    rep movsb
-
-    ; swap_block -> B
-    mov si, offset swap_block
-    mov di, dx
-    add di, NAME_OFF
-    mov cx, TEMP_BLOCK_LEN
-    cld
-    rep movsb
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-SwapNodeData ENDP
-
-; ============================================================
 ; CompareGrades: Compara dos notas completas
 ; ENTRADA: SI = nodo A, DI = nodo B  
 ; SALIDA:  CF = 1 si A < B, CF = 0 si A >= B
@@ -1130,7 +1428,7 @@ CG_END:
 CompareGrades ENDP
 
 ; ============================================================
-; Ordenar (Bubble Sort) ASC/DESC - CORREGIDO: Comparación simplificada
+; Ordenar (Bubble Sort) ASC/DESC
 ; ============================================================
 OrdenarNotas PROC
     push ax
@@ -1183,7 +1481,7 @@ OR_INNER:
     mov si, [bp]               ; nodo A
     mov di, [bp+2]             ; nodo B
 
-    ; Comparación completa de notas (entero.decimal)
+    ; Comparación completa de notas
     call CompareGrades         ; retorna CF=1 si A < B
     
     cmp orderMode, '1'         ; ASC
@@ -1218,7 +1516,7 @@ OR_REBUILD:
     call RebuildLinkedList
 
 OR_SHOW:
-    ; Mostrar lista después de ordenar
+    ; Mostrar lista despues de ordenar
     CALL MostrarListaCompleta
 
 OR_DONE:
@@ -1234,7 +1532,7 @@ OrdenarNotas ENDP
 
 ; ============================================================
 ; Mostrar lista completa
-; ------------------------------------------------------------
+; ============================================================
 MostrarListaCompleta PROC
     push ax
     push bx
@@ -1308,9 +1606,8 @@ MostrarListaCompleta ENDP
 
 ; ============================================================
 ; Opcion2/3/4/5
-; ------------------------------------------------------------
-
-Opcion2:                    ; Mostrar estadísticas
+; ============================================================
+Opcion2:                    ; Mostrar estadisticas
     CALL MostrarEstadisticas
     jmp MainMenu
 
