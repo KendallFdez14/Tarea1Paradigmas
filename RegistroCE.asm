@@ -78,18 +78,18 @@ suma_total_lo       DW 0      ; Parte baja de la suma total
 suma_total_hi       DW 0      ; Parte alta de la suma total
 promedio_entero     DW 0      ; Parte entera del promedio
 promedio_decimal    DW 0      ; Parte decimal del promedio
-nota_max_int        DW 0      ; Parte entera de nota máxima
-nota_max_dec_lo     DW 0      ; Decimal de nota máxima (low)
-nota_max_dec_hi     DW 0      ; Decimal de nota máxima (high)
-nota_min_int        DW 100    ; Parte entera de nota mínima
-nota_min_dec_lo     DW 0FFFFh ; Decimal de nota mínima (low)
-nota_min_dec_hi     DW 0FFFFh ; Decimal de nota mínima (high)
+nota_max_int        DW 0      ; Parte entera de nota maxima
+nota_max_dec_lo     DW 0      ; Decimal de nota maxima (low)
+nota_max_dec_hi     DW 0      ; Decimal de nota maxima (high)
+nota_min_int        DW 100    ; Parte entera de nota minima
+nota_min_dec_lo     DW 0FFFFh ; Decimal de nota minima (low)
+nota_min_dec_hi     DW 0FFFFh ; Decimal de nota minima (high)
 
 ; ------------------ Lista enlazada --------------------------
 ; Nodo:
 ;  name[NAME_LEN+1 '$'], gradeStr[NOTE_LEN+1 '$'], gradeInt (word),
 ;  gradeDecLo (word), gradeDecHi (word), next (word)
-; Tamaño por nodo: 31 + 11 + 2 + 2 + 2 + 2 = 50 bytes
+; Tamano por nodo: 31 + 11 + 2 + 2 + 2 + 2 = 50 bytes
 NODE_SIZE           EQU 50
 
 nodes               DB estudiantesMax * NODE_SIZE DUP(?)
@@ -224,7 +224,8 @@ TerminarCadena0Ah ENDP
 
 ; Obtener offset del nodo por indice (0..cnt-1)
 ;  ENTRADA: AL = indice
-;  SALIDA:  DI = offset del nodo
+;  SALIDA:  DI = offset del nodo  
+
 GetNodeByIndex PROC
     push ax
     xor ah, ah
@@ -357,10 +358,10 @@ VNC_Fin:
 ValidarNombreCompleto ENDP
 
 ; ============================================================
-; VALIDACIÓN DE NOTA
+; VALIDACION DE NOTA
 ; Valida que la nota este en rango 0-100 y maximo 5 decimales
 ; ENTRADA: SI apunta al string de la nota
-; SALIDA: AL = 1 si válida, AL = 0 si invalida
+; SALIDA: AL = 1 si valida, AL = 0 si invalida
 ; ============================================================
 ValidarNota PROC
     push bx
@@ -375,7 +376,7 @@ ValidarNota PROC
     mov decimal_encontrado, 0
     mov dec_count, 0
     
-    ; Verificar si el string está vacío
+    ; Verificar si el string este vacio
     cmp BYTE PTR [si], '$'
     je VN_NotaInvalida
     cmp BYTE PTR [si], 13
@@ -769,13 +770,13 @@ PL_FormatoIncorrecto:
     jmp PL_Fin
 
 PL_NotaInvalida:
-    ; El mensaje de error ya se mostró en ValidarNota
+    ; El mensaje de error ya se muestra en ValidarNota
     pop si
     stc                 ; CF = 1 (error)
     jmp PL_Fin
 
 PL_NombreInvalido:
-    ; El mensaje de error ya se mostró en ValidarNombreCompleto
+    ; El mensaje de error ya se muestra en ValidarNombreCompleto
     pop si
     stc                 ; CF = 1 (error)
 
@@ -922,7 +923,7 @@ CE_Loop:
     ; Obtener nota entera
     mov ax, [di+GINT_OFF]
     
-    ; Verificar aprobado/reprobado (70 o más aprueba)
+    ; Verificar aprobado/reprobado (70 o mas aprueba)
     cmp ax, 70
     jl CE_Reprobado
     inc aprobados
@@ -1047,8 +1048,8 @@ PrintNum2Digitos PROC
 PrintNum2Digitos ENDP
 
 ; ============================================================
-; Imprimir número de 3 dígitos (0-100)
-; Entrada: AX = número
+; Imprimir numero de 3 digitos (0-100)
+; Entrada: AX = numero
 ; ============================================================
 PrintNum3Digitos PROC
     push ax
@@ -1065,23 +1066,23 @@ PrintNum3Digitos PROC
     jmp PN3_Fin
 
 PN3_NotZero:
-    ; Para números 1-100, usar división por 10
-    mov bx, ax          ; Guardar número original
-    mov cx, 0           ; Contador de dígitos
+    ; Para numeros 1-100, usar division por 10
+    mov bx, ax          ; Guardar numero original
+    mov cx, 0           ; Contador de digitos
     
-    ; Convertir a dígitos (en orden inverso)
+    ; Convertir a digitos (en orden inverso)
 PN3_ConvLoop:
     xor dx, dx
     mov ax, bx
     mov bx, 10
     div bx              ; AX = cociente, DX = residuo
-    push dx             ; Guardar dígito en stack
-    inc cx              ; Contar dígito
-    mov bx, ax          ; Preparar para siguiente iteración
+    push dx             ; Guardar digito en stack
+    inc cx              ; Contar digito
+    mov bx, ax          ; Preparar para siguiente iteracion
     cmp ax, 0
     jne PN3_ConvLoop
 
-    ; Imprimir dígitos (en orden correcto)
+    ; Imprimir digitos (en orden correcto)
 PN3_PrintLoop:
     pop dx
     add dl, '0'
@@ -1123,7 +1124,7 @@ ME_HayEstudiantes:
     ; Calcular estadisticas
     CALL CalcularEstadisticas
 
-    ; Título
+    ; Titulo
     mov ah, 09h
     lea dx, mensaje_estadisticas
     int 21h
@@ -1157,7 +1158,7 @@ ME_HayEstudiantes:
     mov al, desaprobados
     mov bl, 100
     mul bl              ; AX = reprobados * 100
-    xor dx, dx          ; Limpiar DX para división
+    xor dx, dx          ; Limpiar DX para division
     xor bx, bx
     mov bl, cnt
     div bx              ; AX = resultado
@@ -1173,14 +1174,14 @@ ME_HayEstudiantes:
     mov ax, promedio_entero
     call PrintNum3Digitos
 
-    ; Mostrar nota máxima
+    ; Mostrar nota maxima
     mov ah, 09h
     lea dx, mensaje_nota_maxima
     int 21h
     mov ax, nota_max_int
     call PrintNum3Digitos
 
-    ; Mostrar nota mínima
+    ; Mostrar nota minima
     mov ah, 09h
     lea dx, mensaje_nota_minima
     int 21h
@@ -1295,7 +1296,7 @@ PauseExit:
 SearchInd ENDP
 
 ; ============================================================
-; CompareGrades MEJORADA: Compara dos notas completas
+; CompareGrades: Compara dos notas completas
 ; ENTRADA: SI = nodo A, DI = nodo B  
 ; SALIDA:  AL = 0 si A == B, AL = 1 si A > B, AL = 2 si A < B
 ; ============================================================
@@ -1344,7 +1345,7 @@ CG_END:
 CompareGrades ENDP
 
 ; ============================================================
-; Ordenar (Bubble Sort) - VERSIÓN SIMPLE Y DIRECTA
+; Ordenar (Bubble Sort)
 ; ============================================================
 OrdenarNotas PROC
     push ax
@@ -1379,7 +1380,7 @@ ON_HayEstudiantes:
     int 21h
     mov orderMode, al
 
-    ; Validar opción
+    ; Validar opcion
     cmp orderMode, '1'
     je  OR_VALIDO
     cmp orderMode, '2'
@@ -1401,12 +1402,11 @@ OR_VALIDO:
     ; Construir array de punteros
     call BuildNodeArray
 
-    ; BUBBLE SORT - Implementación directa
     ; Usaremos dos contadores: CH para pasadas externas, CL para internas
     
     xor ch, ch
     mov cl, cnt
-    dec cl                      ; CL = número de pasadas (cnt-1)
+    dec cl                      ; CL = numero de pasadas (cnt-1)
     mov ch, cl                  ; CH = guardar número de pasadas
 
 OR_PASADA_PRINCIPAL:
@@ -1415,13 +1415,13 @@ OR_PASADA_PRINCIPAL:
     ; Preparar para comparaciones internas
     xor ch, ch
     mov cl, cnt
-    dec cl                      ; CL = número de comparaciones (cnt-1)
+    dec cl                      ; CL = numero de comparaciones (cnt-1)
     
     lea si, nodeArray           ; SI apunta al inicio del array
 
 OR_COMPARAR_PAR:
     push cx                     ; Guardar contador interno
-    push si                     ; Guardar posición actual del array
+    push si                     ; Guardar posicion actual del array
     
     ; Cargar los dos punteros a comparar
     mov di, [si]                ; DI = primer nodo
@@ -1482,7 +1482,7 @@ OR_DEC_ASC:
 
 OR_NECESITA_SWAP:
     ; Intercambiar los punteros en el array
-    pop si                      ; Recuperar posición del array
+    pop si                      ; Recuperar posicion del array
     push si                     ; Guardarla de nuevo
     
     mov ax, [si]                ; AX = primer puntero
@@ -1491,7 +1491,7 @@ OR_NECESITA_SWAP:
     mov [si+2], ax              ; Segundo slot = primer puntero
 
 OR_NO_SWAP:
-    pop si                      ; Recuperar posición del array
+    pop si                      ; Recuperar posicion del array
     add si, 2                   ; Avanzar al siguiente par
     pop cx                      ; Recuperar contador interno
     loop OR_COMPARAR_PAR
@@ -1507,7 +1507,7 @@ OR_MOSTRAR_ORDENADO:
     ; Mostrar la lista ordenada
     CALL ClrScreen
     
-    ; Mostrar mensaje según el orden
+    ; Mostrar mensaje segun el orden
     cmp orderMode, '1'
     je  OR_MSG_ASC
     
@@ -1522,7 +1522,7 @@ OR_MSG_ASC:
     int 21h
 
 OR_MOSTRAR_LISTA:
-    ; Mostrar títulos
+    ; Mostrar titulos
     mov ah, 09h
     lea dx, titulos
     int 21h
@@ -1531,7 +1531,7 @@ OR_MOSTRAR_LISTA:
 
     ; Mostrar la lista desde el head actualizado
     mov di, headPtr
-    mov bl, 1                   ; Contador para numeración
+    mov bl, 1                   ; Contador para numeracion
 
 OR_LOOP_MOSTRAR:
     cmp di, NULL_PTR
@@ -1566,7 +1566,7 @@ OR_LOOP_MOSTRAR:
     call ImprimirCadena
     pop di
 
-    ; Nueva línea
+    ; Nueva linea
     mov ah, 09h
     lea dx, newline
     int 21h
@@ -1669,7 +1669,7 @@ FinMostrar:
 MostrarListaCompleta ENDP
 
 ; ===========================================================
-; Opcion 1: ingreso por linea completa CON VALIDACIONES
+; Opcion 1: ingreso por linea completa con validaciones
 ; ============================================================
 Opcion1:
     CALL ClrScreen
@@ -1797,5 +1797,4 @@ Opcion4:
 SalirPrograma:
     mov ah, 4Ch
     int 21h
-
 END START
