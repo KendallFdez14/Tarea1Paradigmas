@@ -29,7 +29,7 @@ tab                 DB 09h,'$'
 mensageMenu DB 13,10,'Bienvenidos a RegistroCE',13,10
            DB 'Digite:',13,10,13,10
            DB '1. Ingresar calificaciones (hasta 15 estudiantes -Nombre Apellido1 Apellido2 Nota-).',13,10
-           DB '2. Mostrar lista completa.',13,10
+           DB '2. Mostrar estadisticas.',13,10
            DB '3. Buscar estudiante por posicion (indice).',13,10
            DB '4. Ordenar calificaciones (ascendente/descendente).',13,10
            DB '5. Salir.',13,10,13,10
@@ -750,11 +750,12 @@ ADB_okAdd:
     add di, NOTE_OFF
     call CopiarCadena
 
-    mov si, bx
-    add si, NOTE_OFF
+    ; === CORRECCIÓN: Pasar parámetros correctos a ParseAsciiGradeToNode ===
+    lea si, notasBuffer+2      ; SI apunta a la cadena de la nota
     mov di, bx
-    add di, GINT_OFF
+    add di, GINT_OFF           ; DI apunta a donde guardar el valor numérico
     call ParseAsciiGradeToNode
+    ; =====================================================================
 
     mov word ptr [bx+NEXT_OFF], NULL_PTR
     mov ax, headPtr
@@ -830,7 +831,7 @@ SwapNodeData PROC
 SwapNodeData ENDP
 
 ; ============================================================
-; CompareGrades: Compara dos notas completas
+; CompareGrades: Compara dos notas completas (valores numéricos)
 ; ENTRADA: SI = nodo A, DI = nodo B  
 ; SALIDA:  CF = 1 si A < B, CF = 0 si A >= B
 ; ============================================================
@@ -840,27 +841,27 @@ CompareGrades PROC
     push dx
     
     ; Comparar parte entera
-    mov ax, [si+GINT_OFF]      ; entero A
-    mov bx, [di+GINT_OFF]      ; entero B
+    mov ax, [si + GINT_OFF]   ; entero del nodo A
+    mov bx, [di + GINT_OFF]   ; entero del nodo B
     cmp ax, bx
     ja  CG_A_GREATER          ; A > B
     jb  CG_A_LESS             ; A < B
     
-    ; Enteros iguales, comparar parte alta decimal
-    mov ax, [si+GDHI_OFF]     
-    mov bx, [di+GDHI_OFF]
+    ; Si son iguales, comparar parte decimal (alta)
+    mov ax, [si + GDHI_OFF]   ; decimal alto de A
+    mov bx, [di + GDHI_OFF]   ; decimal alto de B
     cmp ax, bx
     ja  CG_A_GREATER
     jb  CG_A_LESS
     
-    ; Parte alta igual, comparar parte baja decimal
-    mov ax, [si+GDLO_OFF]
-    mov bx, [di+GDLO_OFF]
+    ; Si aún son iguales, comparar parte decimal (baja)
+    mov ax, [si + GDLO_OFF]   ; decimal bajo de A
+    mov bx, [di + GDLO_OFF]   ; decimal bajo de B
     cmp ax, bx
     ja  CG_A_GREATER
     jb  CG_A_LESS
     
-    ; Completamente iguales
+    ; Son iguales
     clc                       ; CF = 0 (A >= B)
     jmp CG_END
 
@@ -933,18 +934,19 @@ OR_INNER:
     mov di, [bp+2]             ; nodo B
 
     ; Comparación completa de notas (entero.decimal)
-    call CompareGrades         ; retorna CF=1 si A < B
-    
-    cmp orderMode, '1'         ; ASC
-    je  OR_ASC_CHECK
-    
-    ; DESC - intercambiar si A < B (queremos B < A)
-    jc  OR_SWAP
+    call CompareGrades         ; CF=1 si A < B
+
+    cmp orderMode, '1'         ; '1' = ASC
+    je  OR_ASC_LOGIC
+
+    ; DESC: Intercambiar si A < B (CF = 1)
+    jc OR_SWAP
     jmp OR_ADV
 
-OR_ASC_CHECK:
-    ; ASC - intercambiar si A > B 
-    jnc OR_ADV                 ; si A <= B, no intercambiar
+OR_ASC_LOGIC:
+    ; ASC: Intercambiar si A > B (CF = 0)
+    jnc OR_SWAP
+    jmp OR_ADV
 
 OR_SWAP:
     ; Intercambiar punteros en el array
@@ -979,6 +981,7 @@ OR_DONE:
     pop ax
     ret
 OrdenarNotas ENDP
+
 
 ; ============================================================
 ; Opcion2/3/4/5
