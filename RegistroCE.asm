@@ -1,655 +1,541 @@
 .MODEL SMALL
-.STACK 100H
+.STACK 100h
 
-.DATA ;Constantes principales
-estudiante_tam     EQU 30 ;Tamano maximo para nombre
-notas_tam     EQU 10 ;Tamano maximo para notas
-estudiantesMax      EQU 15 ;Limite de 15 estudiantes
+; ------------------ Constantes ------------------------------
+.DATA
+estudiantesMax      EQU 15
+NAME_LEN            EQU 30      ; sin '$'; se almacenará terminada en '$'
+NOTE_LEN            EQU 10      ; sin '$'; se almacenará terminada en '$'
+NULL_PTR            EQU 0FFFFh  
 
-estudianteBuffer  DB estudiante_tam ;almacenar los nombres de los estudiantes
-           DB ?
-           DB estudiante_tam+2 DUP(0)
-           
-notasBuffer DB notas_tam  ;almacenar las notas
-            DB ?
-            DB notas_tam+2 DUP(0)
+; ------------------ Buffers de entrada ----------------------
+; Buffers 0Ah: [max][len][data...]
+estudianteBuffer    DB NAME_LEN, 0, NAME_LEN+2 DUP(0)
+notasBuffer         DB NOTE_LEN, 0, NOTE_LEN+2  DUP(0)
+lineBuffer          DB 60,0, 62 DUP(0)     ; "Nombre Ap1 Ap2 Nota"
 
-estudiantesList DB estudiantesMax * (estudiante_tam+1) DUP('$') ;Lista de nombres de estudiantes
-notasList      DB estudiantesMax * (notas_tam+1) DUP('$') ;Listas de notas
+newline             DB 13,10,'$'
+tab                 DB 09h,'$'
 
-cnt         DB 0
+; ------------------ Mensajes -------------------------------
+mensageMenu DB 13,10,'Bienvenidos a RegistroCE',13,10
+           DB 'Digite:',13,10,13,10
+           DB '1. Ingresar calificaciones (hasta 15 estudiantes -Nombre Apellido1 Apellido2 Nota-).',13,10
+           DB '2. Mostrar estadisticas.',13,10
+           DB '3. Buscar estudiante por posicion (indice).',13,10
+           DB '4. Ordenar calificaciones (ascendente/descendente).',13,10
+           DB '5. Salir.',13,10,13,10
+           DB '$'
 
-mensageMenu DB 13, 10, 'Bienvenidos/as a Registro CE', 13, 10
-            DB      'Elegir:',  13, 10
-            DB      '1. Ingresar calificaciones (hasta 15 estudiantes)', 13, 10
-            DB      '2. Mostrar estadisticas', 13, 10
-            DB      '3. Buscar estudiante por posicion (indice)', 13, 10 
-            DB      '4. Ordenar calificaciones (ascendente/descendente)', 13, 10
-            DB      '5. Listas de estudiantes guardados', 13, 10
-            DB      '0. Salir', 13, 10
-            DB      '                                                     ', 13, 10
-            DB      'Digite: $'
+prompt_linea   DB 13,10,'Por favor ingrese su estudiante o digite 9 para salir al menu principal',13,10,'$'
 
-mensaje_ingresoNombre DB 13, 10, 'Ingresar Nombre Apellido1 Apellido2: $'
-mensage_ingresoNota   DB 13, 10, 'Ingresar nota: $'
-mensage_Lista  DB 13, 10, 'Lista de Estudiantes guardados:', 13, 10, '-------------------', 13, 10, '$'
-titulos DB 'Numero  Nombres', 9,9,'Notas$'
-newline   DB 13, 10, '$'
-tab       DB 09h, '$'
+mensaje_invalida            DB 13,10,'Opcion invalida!$'
+mensaje_estudiantesmaximos  DB 13,10,'El limite de estudiantes ya fue alcanzado$'
+msgPresioneTecla            DB 13,10,'Presione cualquier tecla$'
+mensaje_posicion            DB 13,10,'Que estudiante desea mostrar?:  $'
+mensaje_invalidaposicion    DB 13,10,'Posicion invalida. No hay estudiante en esa posicion.',13,10,'$'
+mensaje_mostrar_dato        DB 13,10,'Datos del estudiante:',13,10,'$'
+mensage_Lista               DB 13,10,'Lista de Estudiantes guardados:',13,10,'-------------------',13,10,'$'
+titulos                     DB 'Numero  Nombres',9,9,'Notas$'
 
-mensaje_invalida  DB 13, 10, 'Opcion invalida!'  ;cambiar
-mensaje_estudiantesmaximos DB 13, 10, 'El limite de estudiantes ya fue alcanzado$'
-msgPresioneTecla DB 13, 10, 'Presione cualquier tecla$'
-mensaje_procesar db 13,10,"Procesado: $"  
-mensajes_aprobados db 'Porcentaje de aprobados: $'
-mensajes_reprobados db 13,10,'Porcentaje de reprobados: $' 
-  
-mensaje_posicion DB 13, 10, 'Que estudiante desea mostrar?:  $'
-mensaje_invalidaposicion DB 13, 10, 'Posicion invalida. No hay estudiante en esa posicion.', 13, 10, '$'
-mensaje_mostrar_dato DB 13, 10, 'Datos del estudiante:', 13, 10, '$'  
-  
-; Arreglos para almacenar los resultados
-notasenteros_array    dw estudiantesMax dup(0)        ;Parte entera de las notas  (16 bits)
-notasdecimales_array  dw estudiantesMax * 2 dup(0)    ;Parte decimal de las notas  (estudiantesMax * 32 bits)
-; Variables temporales 
-entero_temp dw 0
-decimal_temp dw 2 dup(0)         ; 32 bits (2 words: parte baja + parte alta)
-decimal_encontrado db 0
-  
-; Contadores de aprobaciones
-aprobados db 0
-desaprobados db 0                             
-                              
-                              
+mensaje_ordenar             DB 13,10,'Como desea ordenar las calificaciones',13,10
+                            DB '1. Asc',13,10,'2. Des',13,10,'$' 
+orderMode DB 0              ; '1' asc, '2' des
+
+; ------------------ Mensajes de Estadisticas ----------------
+mensaje_estadisticas        DB 13,10,'=== ESTADISTICAS ===',13,10,'$'
+mensajes_aprobados         DB 'Porcentaje de aprobados: $'
+mensajes_reprobados        DB 13,10,'Porcentaje de reprobados: $' 
+mensaje_promedio           DB 13,10,'Promedio general: $'
+mensaje_nota_maxima        DB 13,10,'Nota maxima: $'
+mensaje_nota_minima        DB 13,10,'Nota minima: $'
+mensaje_sin_estudiantes    DB 13,10,'No hay estudiantes registrados.',13,10,'$'
+
+; ------------------ Variables de Estadisticas ---------------
+aprobados           DB 0
+desaprobados        DB 0
+suma_total_lo       DW 0      ; Parte baja de la suma total
+suma_total_hi       DW 0      ; Parte alta de la suma total
+promedio_entero     DW 0      ; Parte entera del promedio
+promedio_decimal    DW 0      ; Parte decimal del promedio
+nota_max_int        DW 0      ; Parte entera de nota máxima
+nota_max_dec_lo     DW 0      ; Decimal de nota máxima (low)
+nota_max_dec_hi     DW 0      ; Decimal de nota máxima (high)
+nota_min_int        DW 100    ; Parte entera de nota mínima
+nota_min_dec_lo     DW 0FFFFh ; Decimal de nota mínima (low)
+nota_min_dec_hi     DW 0FFFFh ; Decimal de nota mínima (high)
+
+; ------------------ Lista enlazada --------------------------
+; Nodo:
+;  name[NAME_LEN+1 '$'], gradeStr[NOTE_LEN+1 '$'], gradeInt (word),
+;  gradeDecLo (word), gradeDecHi (word), next (word)
+; Tamaño por nodo: 31 + 11 + 2 + 2 + 2 + 2 = 50 bytes
+NODE_SIZE           EQU 50
+
+nodes               DB estudiantesMax * NODE_SIZE DUP(?)
+
+; Cabeceras y control
+headPtr             DW NULL_PTR
+tailPtr             DW NULL_PTR
+cnt                 DB 0
+
+; Array de punteros para ordenamiento
+nodeArray           DW estudiantesMax DUP(?)
+
+; Temporales para parseo y escala de decimales
+entero_temp         DW 0
+dec_temp_lo         DW 0
+dec_temp_hi         DW 0
+dec_count           DB 0
+
+; Swap por bloque: NAME+NOTE+gInt+gDecLo+gDecHi = 48 bytes
+TEMP_BLOCK_LEN      EQU (31+11+2+2+2)
+swap_block          DB TEMP_BLOCK_LEN DUP(?)
+
+; Offsets dentro del nodo
+NAME_OFF  EQU 0
+NOTE_OFF  EQU 31
+GINT_OFF  EQU 42
+GDLO_OFF  EQU 44
+GDHI_OFF  EQU 46
+NEXT_OFF  EQU 48
+
+; ------------------------------------------------------------
 .CODE
 START:
-    MOV AX, @DATA
-    MOV DS, AX
-    MOV ES, AX
+    mov ax, @DATA
+    mov ds, ax
+    mov es, ax
 
 MainMenu:
     CALL ClrScreen
-    CALL MostrarMenu
-    JMP MainMenu
+    mov ah, 09h
+    lea dx, mensageMenu
+    int 21h
 
-MostrarMenu PROC
-    MOV AH, 09h
-    LEA DX, mensageMenu
-    INT 21h
+    mov ah, 01h
+    int 21h
 
-    MOV AH, 01h
-    INT 21h
+    cmp al, '1'
+    je Opcion1
+    cmp al, '2'
+    je Opcion2
+    cmp al, '3'
+    je Opcion3
+    cmp al, '4'
+    je Opcion4
+    cmp al, '5'
+    je SalirPrograma
 
-    CMP AL, '1'
-    JE Opcion1
-    CMP AL, '2'
-    JE Opcion2
-    CMP AL, '3'
-    JE Opcion3
-    CMP AL, '4'
-    JE Opcion4
-    CMP AL, '5'
-    JE Opcion5
-    CMP AL, '0'
-    JE SalirPrograma
-    CMP AL, 1Bh
-    JE SalirPrograma
-    
-    MOV AH, 09h
-    LEA DX, mensaje_invalida 
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-MostrarMenu ENDP
+    mov ah, 09h
+    lea dx, mensaje_invalida
+    int 21h
+    mov ah, 01h
+    int 21h
+    jmp MainMenu
 
-Opcion1:
-    CALL AgregarEstudiante
-    RET
-
-Opcion2:
-    CALL separar_numeros_func
-    CALL MostrarEstadisticas
-    RET
-
-Opcion3:
-    CALL SearchInd
-    RET
-
-Opcion4:
-    CALL separar_numeros_func
-    CALL OrdenarNotas
-    RET
-
-Opcion5:
-    CALL MostrarListaCompleta
-    RET
-
-SalirPrograma:
-    MOV AH, 4Ch
-    INT 21h
-
-
-; AgregarEstudiante
-AgregarEstudiante PROC
-    PUSH AX
-    
-    MOV AL, cnt
-    CMP AL, estudiantesMax
-    JL  PuedeAgregar
-    
-    MOV AH, 09h
-    LEA DX, mensaje_estudiantesmaximos
-    INT 21h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    JMP FinAgregar
-    
-PuedeAgregar:
-    CALL InputProc
-    
-FinAgregar:
-    POP AX
-    RET
-AgregarEstudiante ENDP   
-
-; InputProc 
-InputProc PROC
-    PUSH AX
-    PUSH BX
-    PUSH CX
-    PUSH DX
-    PUSH SI
-    PUSH DI
-    
-    ; Pedir nombre
-    MOV AH, 09h
-    LEA DX, mensaje_ingresoNombre
-    INT 21h
-    
-    ; Leer nombre con INT 21h/0Ah
-    MOV estudianteBuffer, estudiante_tam  ; Maximo de caracteres a leer (indSize es una costante)
-    LEA DX, estudianteBuffer       ; Carga la direccion del buffer donde se guardara el nombre
-    MOV AH, 0Ah
-    INT 21h
-    
-    ; Terminar cadena con '$'
-    XOR BX, BX              ; Limpia el valor de BX
-    MOV BL, estudianteBuffer[1]    ; Numero de caracteres leidos se guardan en BL, valor de indSize
-    MOV estudianteBuffer[BX+2], '$'; Agregar indicador de finalizacion al final 
-    
-    ; Copiar nombre a la lista
-    XOR AX, AX              ; Limpia el valor de AX
-    MOV AL, cnt
-    MOV BL, estudiante_tam+1
-    MUL BL                  ; AX = AL * BL = cnt * (indSize+1) ---> Se almacena en AX
-    LEA DI, estudiantesList ; DI (Destination Index) apunta al inicio de array indLst
-    ADD DI, AX              ; Se adiciona para mover el cursos al guardar la data
-    LEA SI, estudianteBuffer + 2   ; Saltar los primeros 2 bytes del buffer, se almacena el inicio de nombre en SI (source index)
-    CALL CopiarCadena
-
-    ; Pedir nota
-    MOV AH, 09h
-    LEA DX, mensage_ingresoNota
-    INT 21h
-
-    ; Leer nota
-    MOV notasBuffer, notas_tam
-    LEA DX, notasBuffer
-    MOV AH, 0Ah
-    INT 21h
-    
-    ; Terminar cadena con '$'
-    XOR BX, BX
-    MOV BL, notasBuffer[1]
-    MOV notasBuffer[BX+2], '$'
-    
-    ; Copiar nota a la lista
-    XOR AX, AX
-    MOV AL, cnt
-    MOV BL, notas_tam+1
-    MUL BL
-    LEA DI, notasList
-    ADD DI, AX
-    LEA SI, notasBuffer + 2
-    CALL CopiarCadena
-
-    ; Incrementar contador
-    INC cnt
-    
-    MOV AH, 09h
-    LEA DX, newline
-    INT 21h
-    
-    POP DI
-    POP SI
-    POP DX
-    POP CX
-    POP BX
-    POP AX
-    RET
-InputProc ENDP
-
-
-; Buscar por ID
-SearchInd PROC
-    CALL ClrScreen
-    
-    ; Promt
-    MOV AH, 09h
-    LEA DX, mensaje_posicion
-    INT 21h
-    
-    ; ID read
-    MOV AH, 01h
-    INT 21h
-    
-    ; Check 
-    CMP AL, '1'
-    JL IDInvalidoBusqueda
-    CMP AL, '9'
-    JG IDInvalidoBusqueda
-    
-    ; ASCII to num
-    SUB AL, '1'
-    
-    CALL DisplayInd
-    
-    MOV AH, 09h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-    
-IDInvalidoBusqueda:
-    MOV AH, 09h
-    LEA DX, mensaje_invalidaposicion
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-SearchInd ENDP
-
-
-; AL = ID
-DisplayInd PROC
-    PUSH AX
-    PUSH BX
-    PUSH CX
-    PUSH DX
-    PUSH SI
-    
-    ; Verify with cnt
-    CMP AL, cnt
-    JGE IDInvalido
-    
-    ; Save  ID in  BX
-    XOR BX, BX
-    MOV BL, AL
-    
-    ; Display IDdo
-    MOV AH, 02h
-    MOV DL, BL
-    ADD DL, '1'
-    INT 21h
-    MOV DL, '.'
-    INT 21h
-    MOV DL, ' '
-    INT 21h
-    
-    ; Display name
-    MOV AL, BL
-    MOV CL, estudiante_tam+1
-    MUL CL           ; AX = AL * CL
-    LEA SI, estudiantesList
-    ADD SI, AX
-    CALL ImprimirCadena
-    
-    ; Tab
-    MOV AH, 09h
-    LEA DX, tab
-    INT 21h
-    
-    ; Display grade
-    MOV AL, BL
-    MOV AH, notas_tam+1
-    MUL AH           ; AX = AL * AH
-    LEA SI, notasList
-    ADD SI, AX
-    CALL ImprimirCadena
-    
-    MOV AH, 09h
-    LEA DX, newline
-    INT 21h
-
-    POP SI
-    POP DX
-    POP CX
-    POP BX
-    POP AX
-    RET
-DisplayInd ENDP
-    
-IDInvalido:
-    MOV AH, 09h
-    LEA DX, mensaje_invalidaposicion
-    INT 21h
-
-
-; CopiarCadena 
-CopiarCadena PROC
-    PUSH AX
-    PUSH CX
-    PUSH SI
-    PUSH DI
-    
-CopiarLoop:
-    MOV AL, [SI]       ; Esto es guardar en AL la posicion del primer caracter de la data de buffer
-                       ; la primera vez que se llama al PROC, luego almacenara el siguiente caracter
-    CMP AL, 0Dh        ; Saltar carriage return, final de la linea
-    JE  FinCopia
-    CMP AL, 0Ah        ; Saltar line feed, que es avance de linea o de fila
-    JE  SaltarChar      
-    MOV [DI], AL
-    INC DI             ; Se incrementa DI para apuntar al siguiente lugar del buffer destino.
-SaltarChar:            
-    INC SI             ; Avanza al siguiente caracter de buffer
-    CMP BYTE PTR [SI], '$' ; Verifica si ya termina la cadena
-    JNE CopiarLoop
-    
-FinCopia:
-    MOV BYTE PTR [DI], '$'
-    POP DI
-    POP SI
-    POP CX
-    POP AX
-    RET
-CopiarCadena ENDP
-
-
-; MostrarListaCompleta 
-MostrarListaCompleta PROC
-    CALL ClrScreen
-    
-    MOV AH, 09h
-    LEA DX, mensage_Lista
-    INT 21h
-    LEA DX, titulos
-    INT 21h
-    LEA DX, newline
-    INT 21h
-    
-    ; Verificar si hay estudiantes
-    MOV AL, cnt
-    CMP AL, 0
-    JE FinMostrar
-    
-    XOR CX, CX
-    MOV CL, cnt
-    XOR BX, BX
-    
-MostrarEstudiante:    
-    PUSH BX
-    PUSH CX
-    
-    ; Mostrar numero
-    MOV AH, 02h
-    MOV DL, BL
-    ADD DL, '1'
-    INT 21h
-    MOV DL, '.'
-    INT 21h
-    MOV DL, ' '
-    INT 21h
-    
-    ; Mostrar nombre
-    MOV AL, BL
-    MOV CL, estudiante_tam+1
-    MUL CL  ; AX = AL * CL
-    LEA SI, estudiantesList
-    ADD SI, AX
-    CALL ImprimirCadena
-    
-    ; Tabulacion
-    MOV AH, 09h
-    LEA DX, tab
-    INT 21h
-    
-    ; Mostrar nota
-    MOV AL, BL
-    MOV AH, notas_tam+1
-    MUL AH
-    LEA SI, notasList
-    ADD SI, AX
-    CALL ImprimirCadena
-    
-    ; Nueva linea
-    MOV AH, 09h
-    LEA DX, newline
-    INT 21h
-    
-    POP CX
-    POP BX
-    INC BX
-    LOOP MostrarEstudiante
-    
-FinMostrar:
-    MOV AH, 09h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-MostrarListaCompleta ENDP
-
-; ImprimirCadena
-ImprimirCadena PROC
-    PUSH AX
-    PUSH DX
-    PUSH SI
-    
-ImprimirLoop:
-    MOV DL, [SI]
-    CMP DL, '$'
-    JE FinImprimir
-    MOV AH, 02h
-    INT 21h
-    INC SI
-    JMP ImprimirLoop
-    
-FinImprimir:
-    POP SI
-    POP DX
-    POP AX
-    RET
-ImprimirCadena ENDP
-
-; Funciones
-MostrarEstadisticas PROC
-    CALL ClrScreen 
-    CALL calcular_porcentajes
-    MOV AH, 09h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h 
-    RET
-MostrarEstadisticas ENDP  
-
-BuscarEstudiante PROC
-    CALL ClrScreen
-    MOV AH, 09h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-BuscarEstudiante ENDP
-
-OrdenarNotas PROC
-    CALL ClrScreen
-    MOV AH, 09h
-    LEA DX, msgPresioneTecla
-    INT 21h
-    MOV AH, 01h
-    INT 21h
-    RET
-OrdenarNotas ENDP
+; ============================================================
+; Utilidades basicas
+; ------------------------------------------------------------
 
 ; Limpiar pantalla
-ClrScreen:
-    MOV AX, 0600h   ; AH=06h (scroll), AL=00h (clear)
-    MOV BH, 07h     ; Atributo (gris sobre negro)
-    MOV CX, 0000h   ; Esquina superior izquierda
-    MOV DX, 184Fh   ; Esquina inferior derecha
-    INT 10h
-    
-    ; Posicionar cursor en 0,0
-    MOV AH, 02h
-    MOV BH, 00h
-    MOV DX, 0000h
-    INT 10h
-    RET 
+ClrScreen PROC
+    mov ax, 0600h
+    mov bh, 07h
+    mov cx, 0000h
+    mov dx, 184Fh
+    int 10h
+    mov ah, 02h
+    mov bh, 00h
+    mov dx, 0000h
+    int 10h
+    ret
+ClrScreen ENDP
 
-; Separa lista de strings a listas numericas
-separar_numeros_func proc
+; Imprimir cadena SI -> '$'
+ImprimirCadena PROC
+    push ax
+    push dx
+    push si
+ImprimirLoop:
+    mov dl, [si]
+    cmp dl, '$'
+    je  ImprimirFin
+    mov ah, 02h
+    int 21h
+    inc si
+    jmp ImprimirLoop
+ImprimirFin:
+    pop si
+    pop dx
+    pop ax
+    ret
+ImprimirCadena ENDP
+
+; Copiar cadena desde SI -> DI hasta '$'
+CopiarCadena PROC
+    push ax
+CopiarLoop:
+    mov al, [si]
+    mov [di], al
+    inc si
+    inc di
+    cmp al, '$'
+    jne CopiarLoop
+    pop ax
+    ret
+CopiarCadena ENDP
+
+; ENTRADA: DX -> buffer 0Ah ([max][len][data...]) ; termina con '$'
+TerminarCadena0Ah PROC
+    push ax
+    push bx
+    push si
+    mov si, dx
+    mov bl, [si+1]                 ; len
+    xor bh, bh                     ; *** importante: BH=0 para usar BX como desplazamiento
+    mov byte ptr [si+2+bx], '$'    ; fin '$'
+    pop si
+    pop bx
+    pop ax
+    ret
+TerminarCadena0Ah ENDP
+
+; Obtener offset del nodo por indice (0..cnt-1)
+;  ENTRADA: AL = indice
+;  SALIDA:  DI = offset del nodo
+GetNodeByIndex PROC
+    push ax
+    xor ah, ah
+    mov di, offset nodes
+    mov bl, NODE_SIZE
+    mul bl            ; AX = index * NODE_SIZE
+    add di, ax
+    pop ax
+    ret
+GetNodeByIndex ENDP
+
+; ============================================================
+; Parseo de nota ASCII a (entero, decimos escalados a 5 digitos)
+; Guarda en nodo: [DI]=gInt, [DI+2]=gDecLo, [DI+4]=gDecHi
+; ENTRADA: SI -> cadena de nota '$'-terminada
+;          DI -> destino gInt
+; ------------------------------------------------------------
+ParseAsciiGradeToNode PROC
+    push ax
+    push bx
+    push cx
+    push dx
+
+    mov word ptr entero_temp, 0
+    mov word ptr dec_temp_lo, 0
+    mov word ptr dec_temp_hi, 0
+    mov dec_count, 0
+
+; Parte entera
+P_IntLoop:
+    mov al, [si]
+    cmp al, '$'
+    je  P_Finish
+    cmp al, '.'
+    je  P_DecStart
+    cmp al, 13
+    je  P_Finish
+    cmp al, 10
+    je  P_Finish
+    ; digito -> AX
+    sub al, '0'
+    mov ah, 0
+    ; entero_temp = entero_temp*10 + al
+    mov ax, entero_temp
+    mov bx, 10
+    mul bx           ; DX:AX = entero_temp*10
+    ; sumar digito (en BL) asegurando BH=0
+    mov bl, [si]
+    sub bl, '0'
+    xor bh, bh
+    add ax, bx
+    mov entero_temp, ax
+    inc si
+    jmp P_IntLoop
+
+; Parte decimal
+P_DecStart:
+    inc si
+P_DecLoop:
+    mov al, [si]
+    cmp al, '$'
+    je  P_Scale
+    cmp al, 13
+    je  P_Scale
+    cmp al, 10
+    je  P_Scale
+    sub al, '0'
+    mov ah, 0
+    ; (dec_hi:dec_lo) = (dec_hi:dec_lo)*10 + al
+    push ax
+    ; low * 10
+    mov ax, dec_temp_lo
+    mov bx, 10
+    mul bx          ; DX:AX
+    mov dec_temp_lo, ax
+    mov cx, dx      ; carry low
+    ; hi * 10 + carry
+    mov ax, dec_temp_hi
+    mov bx, 10
+    mul bx
+    add ax, cx
+    mov dec_temp_hi, ax
+    ; + dígito
+    pop ax
+    add dec_temp_lo, ax
+    adc dec_temp_hi, 0
+    ; contar digitos (max 5)
+    mov al, dec_count
+    cmp al, 5
+    jae P_SkipInc
+    inc dec_count
+P_SkipInc:
+    inc si
+    jmp P_DecLoop
+
+; Escalar a 5 digitos: multiplicar por 10^(5 - dec_count)
+P_Scale:
+    mov al, dec_count
+    mov ah, 0
+    mov bx, 5
+    cmp ax, bx
+    jae P_Save
+    ; reps = 5 - dec_count
+    mov bl, 5
+    sub bl, al
+    mov cl, bl
+ScaleLoop:
+    mov ax, dec_temp_lo
+    mov bx, 10
+    mul bx          ; DX:AX
+    mov dec_temp_lo, ax
+    mov si, dx
+    mov ax, dec_temp_hi
+    mov bx, 10
+    mul bx
+    add ax, si
+    mov dec_temp_hi, ax
+    dec cl
+    jnz ScaleLoop
+
+P_Save:
+    mov ax, entero_temp
+    mov [di], ax
+    mov ax, dec_temp_lo
+    mov [di+2], ax
+    mov ax, dec_temp_hi
+    mov [di+4], ax
+
+P_Finish:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+ParseAsciiGradeToNode ENDP
+
+; ============================================================
+; Construir array de punteros desde la lista enlazada
+; ============================================================
+BuildNodeArray PROC
+    push ax
+    push bx
+    push di
+    push si
+
+    mov di, headPtr
+    mov si, offset nodeArray
+    xor bl, bl
+
+BNA_Loop:
+    cmp di, NULL_PTR
+    je BNA_End
+    cmp bl, cnt
+    jae BNA_End
+
+    ; Guardar puntero en array
+    mov [si], di
+    add si, 2
+    
+    ; Siguiente nodo
+    mov di, [di+NEXT_OFF]
+    inc bl
+    jmp BNA_Loop
+
+BNA_End:
+    pop si
+    pop di
+    pop bx
+    pop ax
+    ret
+BuildNodeArray ENDP
+
+; ============================================================
+; Reconstruir lista enlazada desde array ordenado
+; ============================================================
+RebuildLinkedList PROC
+    push ax
+    push bx
+    push di
+    push si
+
+    mov al, cnt
+    cmp al, 0
+    je RLL_END
+
+    ; Primer nodo
+    mov si, offset nodeArray
+    mov di, [si]
+    mov headPtr, di
+    mov bx, di
+
+    mov cl, 1
+    add si, 2
+
+RLL_Loop:
+    cmp cl, cnt
+    jae RLL_Last
+
+    ; Siguiente nodo
+    mov di, [si]
+    mov [bx+NEXT_OFF], di
+    mov bx, di
+    inc cl
+    add si, 2
+    jmp RLL_Loop
+
+RLL_Last:
+    mov word ptr [bx+NEXT_OFF], NULL_PTR
+    mov tailPtr, bx
+
+RLL_END:
+    pop si
+    pop di
+    pop bx
+    pop ax
+    ret
+RebuildLinkedList ENDP
+
+; ============================================================
+; Calcular Estadísticas
+; ============================================================
+CalcularEstadisticas PROC
     push ax
     push bx
     push cx
     push dx
     push si
     push di
-    
-    ; Inicializar indices
-    mov si, offset notasList
-    mov di, offset notasenteros_array
-    mov bx, offset notasdecimales_array
-    mov cx, 0                      ; Contador de numeros
-    
-procesar_numero:
-    ; Reiniciar valores temporales (32 bits para decimal)
-    mov word ptr entero_temp, 0
-    mov word ptr decimal_temp, 0     ; Parte baja
-    mov word ptr decimal_temp + 2, 0 ; Parte alta (32 bits total)
-    mov decimal_encontrado, 0
-    
-leer_entero:
-    mov al, [si]
-    cmp al, '$'              ; Fin del string?
-    je fin_numero
-    cmp al, '.'              ; Es punto decimal?
-    je encontro_decimal
-    cmp al, 13               ; Es carriage return?
-    je fin_numero
-    cmp al, 10               ; Es new line?
-    je fin_numero
-    
-    ; Convertir ASCII a numero
-    sub al, '0'
-    mov ah, 0
-    push ax                  ; Guardar nuevo digito
-    
-    ; entero_temp = entero_temp * 10
-    mov ax, entero_temp
-    mov dx, 10
-    mul dx
-    mov entero_temp, ax
-    
-    ; entero_temp = entero_temp + nuevo_digito
-    pop ax
-    add entero_temp, ax
-    
-    inc si
-    jmp leer_entero
 
-encontro_decimal:
-    mov decimal_encontrado, 1
-    inc si                   ; Saltar el punto
-    
-leer_decimal:
-    mov al, [si]
-    cmp al, '$'              ; ¿Fin del string?
-    je fin_numero
-    cmp al, 13               ; ¿Es carriage return?
-    je fin_numero
-    cmp al, 10               ; ¿Es new line?
-    je fin_numero
-    
-    ; Convertir ASCII a número
-    sub al, '0'
-    mov ah, 0
-    push ax                  ; Guardar nuevo dígito
-    
-    ; decimal_temp = decimal_temp * 10 (32 bits)
-    push bx
-    push cx
-    push dx
-    
-    ; Multiplicar parte baja (decimal_temp) por 10
-    mov ax, word ptr decimal_temp
-    mov dx, 10
-    mul dx
-    mov word ptr decimal_temp, ax
-    mov cx, dx              ; Guardar carry
-    
-    ; Multiplicar parte alta (decimal_temp + 2) por 10 y sumar carry
-    mov ax, word ptr decimal_temp + 2
-    mov dx, 10
-    mul dx
-    add ax, cx              ; Sumar el carry de la parte baja
-    mov word ptr decimal_temp + 2, ax
-    
-    pop dx
-    pop cx
-    pop bx
-    
-    ; decimal_temp = decimal_temp + nuevo_dígito
-    pop ax
-    add word ptr decimal_temp, ax
-    adc word ptr decimal_temp + 2, 0  ; Sumar carry si hay
-    
-    inc si
-    jmp leer_decimal
-
-fin_numero:
-    ; Guardar entero en array (16 bits)
-    mov ax, entero_temp
-    mov [di], ax
-    add di, 2
-    
-    ; Guardar decimal en array (32 bits - 2 palabras)
-    mov ax, word ptr decimal_temp      ; Parte baja
-    mov [bx], ax
-    mov ax, word ptr decimal_temp + 2  ; Parte alta
-    mov [bx + 2], ax
-    add bx, 4                         ; Avanzar 4 bytes (32 bits)
-    
-    ; Avanzar al siguiente string en grdLst
-    inc cx
+    ; Verificar si hay estudiantes
     mov al, cnt
-    cbw
-    cmp cx, ax               ; Comparar con cnt (convertido a word)
-    jge terminar_proceso     ; Si ya procesamos todos, terminar
+    cmp al, 0
+    je CE_NoEstudiantes
+
+    ; Inicializar variables
+    mov aprobados, 0
+    mov desaprobados, 0
+    mov suma_total_lo, 0
+    mov suma_total_hi, 0
+    mov nota_max_int, 0
+    mov nota_max_dec_lo, 0
+    mov nota_max_dec_hi, 0
+    mov nota_min_int, 100
+    mov nota_min_dec_lo, 0FFFFh
+    mov nota_min_dec_hi, 0FFFFh
+
+    ; Recorrer lista enlazada
+    mov di, headPtr
+    xor cl, cl              ; contador
+
+CE_Loop:
+    cmp di, NULL_PTR
+    je CE_FinLoop
+
+    ; Obtener nota entera
+    mov ax, [di+GINT_OFF]
     
-    ; Avanzar SI al inicio del siguiente string (11 bytes por elemento)
-    ; Calcular: SI = offset grdLst + (cx * 11)
-    push ax
-    push dx
-    mov ax, cx               ; AX = numero actual (1, 2, 3...)
-    mov dx, notas_tam
-    inc dx                   ; DX = 11 (grdSize + 1)
-    mul dx                   ; AX = cx * 11
-    mov si, offset notasList
-    add si, ax               ; SI apunta al inicio del siguiente string
-    pop dx
-    pop ax
+    ; Verificar aprobado/reprobado (70 o más aprueba)
+    cmp ax, 70
+    jl CE_Reprobado
+    inc aprobados
+    jmp CE_ContinuarStats
+
+CE_Reprobado:
+    inc desaprobados
+
+CE_ContinuarStats:
+    ; Sumar al total (solo parte entera para simplificar)
+    add suma_total_lo, ax
+    adc suma_total_hi, 0
+
+    ; Comparar con máxima
+    mov bx, nota_max_int
+    cmp ax, bx
+    jl CE_NoEsMaxima
+    jg CE_NuevaMaxima
     
-    jmp procesar_numero      ; Procesar el siguiente número
+    ; Si son iguales, comparar decimales
+    mov bx, [di+GDHI_OFF]
+    cmp bx, nota_max_dec_hi
+    jl CE_NoEsMaxima
+    jg CE_NuevaMaxima
+    mov bx, [di+GDLO_OFF]
+    cmp bx, nota_max_dec_lo
+    jle CE_NoEsMaxima
+
+CE_NuevaMaxima:
+    mov nota_max_int, ax
+    mov bx, [di+GDLO_OFF]
+    mov nota_max_dec_lo, bx
+    mov bx, [di+GDHI_OFF]
+    mov nota_max_dec_hi, bx
+
+CE_NoEsMaxima:
+    ; Comparar con mínima
+    mov bx, nota_min_int
+    cmp ax, bx
+    jg CE_NoEsMinima
+    jl CE_NuevaMinima
     
-terminar_proceso:
+    ; Si son iguales, comparar decimales
+    mov bx, [di+GDHI_OFF]
+    cmp bx, nota_min_dec_hi
+    jg CE_NoEsMinima
+    jl CE_NuevaMinima
+    mov bx, [di+GDLO_OFF]
+    cmp bx, nota_min_dec_lo
+    jge CE_NoEsMinima
+
+CE_NuevaMinima:
+    mov nota_min_int, ax
+    mov bx, [di+GDLO_OFF]
+    mov nota_min_dec_lo, bx
+    mov bx, [di+GDHI_OFF]
+    mov nota_min_dec_hi, bx
+
+CE_NoEsMinima:
+    ; Siguiente nodo
+    mov di, [di+NEXT_OFF]
+    inc cl
+    jmp CE_Loop
+
+CE_FinLoop:
+    ; Calcular promedio
+    mov ax, suma_total_lo
+    xor dx, dx
+    xor bx, bx
+    mov bl, cnt
+    div bx
+    mov promedio_entero, ax
+    ; El residuo en DX podría usarse para decimales
+
     pop di
     pop si
     pop dx
@@ -657,115 +543,186 @@ terminar_proceso:
     pop bx
     pop ax
     ret
-separar_numeros_func endp
 
-; Calcular Porcentajes de Estudiantes
-calcular_porcentajes proc
-    mov cl, cnt        ; cnt es 8 bits, usamos CL como contador
-    xor si, si         ; Reinicio source index
-    mov aprobados,0
-    mov desaprobados,0
-
-ciclo_notas:
-    cmp cl,0
-    je fin_ciclo
-
-    mov ax, notasenteros_array[si] ; cargar nota
-    cmp ax,70
-    jl es_reprobado
-
-es_aprobado:
-    inc aprobados
-    jmp siguiente
-
-es_reprobado:
-    inc desaprobados
-
-siguiente:
-    add si,2       ; siguiente palabra
-    dec cl
-    jmp ciclo_notas
-
-fin_ciclo:
-
-
-; porcentaje aprobados = (aprobados * 100) / cnt
-
-    xor ax, ax        ; LIMPIAR AX COMPLETAMENTE
-    mov al, aprobados ; cargar aprobados (8 bits)
-    mov bl, 100
-    mul bl            ; AX = aprobados * 100
-    mov bl, cnt       ; divisor
-    div bl            ; AL = cociente, AH = residuo
-    xor ah, ah        ; descartar residuo, AX = porcentaje
-    push ax           ; guardar porcentaje
-
-    ; imprimir mensaje de aprobados
-    mov ah, 9
-    lea dx, mensajes_aprobados
-    int 21h
+CE_NoEstudiantes:
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
     pop ax
-    call print_num    ; imprimir porcentaje
-
- 
-; porcentaje reprobados = (desaprobados * 100) / cnt
-
-    xor ax, ax        ; LIMPIAR AX COMPLETAMENTE - ESTO ES LO QUE FALTABA
-    mov al, desaprobados ; cargar desaprobados (8 bits)
-    mov bl, 100
-    mul bl            ; AX = desaprobados * 100
-    mov bl, cnt       ; divisor
-    div bl            ; AL = cociente, AH = residuo
-    xor ah, ah        ; descartar residuo, AX = porcentaje
-
-    ; imprimir mensaje de reprobados
-    push ax           ; guardar porcentaje temporalmente
-    mov ah, 9
-    lea dx, mensajes_reprobados
-    int 21h
-    pop ax
-    call print_num
-
     ret
-calcular_porcentajes endp
+CalcularEstadisticas ENDP
 
-; Imprimir Numero contenido en AX
-print_num proc
+; ============================================================
+; Imprimir número de 2 dígitos (0-99)
+; Entrada: AL = número
+; ============================================================
+PrintNum2Digitos PROC
+    push ax
+    push bx
+    push dx
+
+    xor ah, ah
+    mov bl, 10
+    div bl              ; AL = decenas, AH = unidades
+    
+    ; Imprimir decenas
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    ; Imprimir unidades
+    mov al, ah
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+    pop dx
+    pop bx
+    pop ax
+    ret
+PrintNum2Digitos ENDP
+
+; ============================================================
+; Imprimir número de 3 dígitos (0-100)
+; Entrada: AX = número
+; ============================================================
+PrintNum3Digitos PROC
     push ax
     push bx
     push cx
     push dx
 
-    mov cx, 0          ; contador de digitos
-    mov bx, 10         ; divisor para decimal
+    mov cx, 0
+    mov bx, 10
 
     cmp ax, 0
-    jne conv_loop
-    ; si AX=0, imprimir '0' directamente
+    jne PN3_ConvLoop
+    ; Si es 0, imprimir '0'
     mov dl, '0'
-    mov ah, 2
+    mov ah, 02h
     int 21h
-    jmp print_symbol
+    jmp PN3_Fin
 
-conv_loop:
+PN3_ConvLoop:
     xor dx, dx
-    div bx            ; AX / 10 -> cociente en AX, residuo en DX
-    push dx           ; guardar residuo (digito)
+    div bx
+    push dx
     inc cx
     cmp ax, 0
-    jne conv_loop
+    jne PN3_ConvLoop
 
-print_digits:
+PN3_PrintLoop:
     pop dx
     add dl, '0'
-    mov ah, 2
+    mov ah, 02h
     int 21h
-    loop print_digits
+    loop PN3_PrintLoop
 
-print_symbol:
-    ; imprimir simbolo de porcentaje
+PN3_Fin:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+PrintNum3Digitos ENDP
+
+; ============================================================
+; Mostrar Estadísticas
+; ============================================================
+MostrarEstadisticas PROC
+    push ax
+    push bx
+    push cx
+    push dx
+
+    CALL ClrScreen
+    
+    ; Verificar si hay estudiantes
+    mov al, cnt
+    cmp al, 0
+    jne ME_HayEstudiantes
+    
+    ; No hay estudiantes
+    mov ah, 09h
+    lea dx, mensaje_sin_estudiantes
+    int 21h
+    jmp ME_Fin
+
+ME_HayEstudiantes:
+    ; Calcular estadísticas
+    CALL CalcularEstadisticas
+
+    ; Título
+    mov ah, 09h
+    lea dx, mensaje_estadisticas
+    int 21h
+
+    ; Mostrar porcentaje de aprobados
+    mov ah, 09h
+    lea dx, mensajes_aprobados
+    int 21h
+    
+    ; Calcular porcentaje aprobados = (aprobados * 100) / cnt
+    xor ax, ax
+    mov al, aprobados
+    mov bl, 100
+    mul bl
+    xor bx, bx
+    mov bl, cnt
+    div bl
+    call PrintNum2Digitos
     mov dl, '%'
-    mov ah, 2
+    mov ah, 02h
+    int 21h
+
+    ; Mostrar porcentaje de reprobados
+    mov ah, 09h
+    lea dx, mensajes_reprobados
+    int 21h
+    
+    ; Calcular porcentaje reprobados = (desaprobados * 100) / cnt
+    xor ax, ax
+    mov al, desaprobados
+    mov bl, 100
+    mul bl
+    xor bx, bx
+    mov bl, cnt
+    div bl
+    call PrintNum2Digitos
+    mov dl, '%'
+    mov ah, 02h
+    int 21h
+
+    ; Mostrar promedio general
+    mov ah, 09h
+    lea dx, mensaje_promedio
+    int 21h
+    mov ax, promedio_entero
+    call PrintNum3Digitos
+
+    ; Mostrar nota máxima
+    mov ah, 09h
+    lea dx, mensaje_nota_maxima
+    int 21h
+    mov ax, nota_max_int
+    call PrintNum3Digitos
+
+    ; Mostrar nota mínima
+    mov ah, 09h
+    lea dx, mensaje_nota_minima
+    int 21h
+    mov ax, nota_min_int
+    call PrintNum3Digitos
+
+ME_Fin:
+    mov ah, 09h
+    lea dx, msgPresioneTecla
+    int 21h
+    mov ah, 01h
     int 21h
 
     pop dx
@@ -773,7 +730,600 @@ print_symbol:
     pop bx
     pop ax
     ret
-print_num endp
+MostrarEstadisticas ENDP
 
+; ============================================================
+; Buscar por posicion (1..cnt)  (entrada de un solo digito)
+; ------------------------------------------------------------
+SearchInd PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    CALL ClrScreen
+    mov ah, 09h
+    lea dx, mensaje_posicion
+    int 21h
+
+    mov ah, 01h
+    int 21h
+    cmp al, '1'
+    jb Inval
+    sub al, '0'
+    mov bl, cnt
+    cmp al, bl
+    ja Inval
+
+    dec al
+
+    mov di, headPtr
+    cmp di, NULL_PTR
+    je Inval
+
+    mov cl, al
+    jcxz Found
+NextHop:
+    mov di, [di+NEXT_OFF]
+    cmp di, NULL_PTR
+    je Inval
+    dec cl
+    jnz NextHop
+
+Found:
+    mov ah, 09h
+    lea dx, mensaje_mostrar_dato
+    int 21h
+
+    mov ah, 02h
+    mov dl, al
+    add dl, '1'
+    int 21h
+    mov dl, '.'
+    int 21h
+    mov dl, ' '
+    int 21h
+
+    mov si, di
+    add si, NAME_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, tab
+    int 21h
+
+    mov si, di
+    add si, NOTE_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, newline
+    int 21h
+
+    jmp PauseExit
+
+Inval:
+    mov ah, 09h
+    lea dx, mensaje_invalidaposicion
+    int 21h
+
+PauseExit:
+    mov ah, 09h
+    lea dx, msgPresioneTecla
+    int 21h
+    mov ah, 01h
+    int 21h
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+SearchInd ENDP
+
+; ------------------------------------------------------------
+; Opcion 1: ingreso por línea completa o '9' para volver
+; ------------------------------------------------------------
+Opcion1:
+    CALL ClrScreen
+IngresarLoop:
+    mov ah, 09h
+    lea dx, prompt_linea
+    int 21h
+
+    mov ah, 0Ah
+    lea dx, lineBuffer
+    int 21h
+
+    lea dx, lineBuffer
+    call TerminarCadena0Ah
+
+    mov si, offset lineBuffer
+    mov bl, [si+1]
+    cmp bl, 1
+    jne NoSalir9
+    mov al, [si+2]
+    cmp al, '9'
+    je  FinOpcion1
+NoSalir9:
+
+    lea si, [si+2]
+    call ParseLineaNombreNota
+    jc  IngresarLoop
+
+    call AgregarDesdeBuffers
+    jmp IngresarLoop
+
+FinOpcion1:
+    jmp MainMenu
+
+; ------------------------------------------------------------
+; ParseLineaNombreNota (separa nombre y nota)
+; ------------------------------------------------------------
+ParseLineaNombreNota PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push di
+
+    mov di, si
+PL_FindEnd:
+    mov al, [di]
+    cmp al, '$'
+    je  PL_HaveEnd
+    inc di
+    jmp PL_FindEnd
+
+PL_HaveEnd:
+    dec di
+
+PL_TrimEnd:
+    cmp di, si
+    jb  PL_Fail
+    mov al, [di]
+    cmp al, ' '
+    jne PL_FindSplit
+    dec di
+    jmp PL_TrimEnd
+
+PL_FindSplit:
+    mov bx, di
+PL_FindSpaceBack:
+    cmp bx, si
+    jbe PL_Fail
+    mov al, [bx]
+    cmp al, ' '
+    je  PL_SplitFound
+    dec bx
+    jmp PL_FindSpaceBack
+
+PL_SplitFound:
+    mov dx, bx
+    inc bx
+
+PL_TrimNoteStart:
+    mov al, [bx]
+    cmp al, ' '
+    jne PL_NoteStartOK
+    inc bx
+    jmp PL_TrimNoteStart
+
+PL_NoteStartOK:
+    lea di, notasBuffer+2
+PL_CopyNote:
+    mov al, [bx]
+    cmp al, '$'
+    je  PL_EndCopyNote
+    mov [di], al
+    inc di
+    inc bx
+    jmp PL_CopyNote
+PL_EndCopyNote:
+    mov byte ptr [di], '$'
+
+    mov bx, dx
+    dec bx
+
+PL_TrimNameEnd:
+    cmp bx, si
+    jb  PL_Fail
+    mov al, [bx]
+    cmp al, ' '
+    jne PL_NameEndOK
+    dec bx
+    jmp PL_TrimNameEnd
+
+PL_NameEndOK:
+    lea di, estudianteBuffer+2
+PL_CopyName:
+    mov al, [si]
+    cmp si, bx
+    ja  PL_EndCopyName
+    mov [di], al
+    inc di
+    inc si
+    jmp PL_CopyName
+PL_EndCopyName:
+    mov byte ptr [di], '$'
+
+    clc
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+
+PL_Fail:
+    stc
+    pop di
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+ParseLineaNombreNota ENDP
+
+; ------------------------------------------------------------
+; AgregarDesdeBuffers: usa estudianteBuffer/notasBuffer
+; ------------------------------------------------------------
+AgregarDesdeBuffers PROC
+    push ax
+    push bx
+    push si
+    push di
+
+    mov al, cnt
+    cmp al, estudiantesMax
+    jb  ADB_okAdd
+    mov ah, 09h
+    lea dx, mensaje_estudiantesmaximos
+    int 21h
+    jmp ADB_endAdd
+
+ADB_okAdd:
+    mov al, cnt
+    call GetNodeByIndex
+    mov bx, di
+
+    lea si, estudianteBuffer+2
+    mov di, bx
+    add di, NAME_OFF
+    call CopiarCadena
+
+    lea si, notasBuffer+2
+    mov di, bx
+    add di, NOTE_OFF
+    call CopiarCadena
+
+    mov si, bx
+    add si, NOTE_OFF
+    mov di, bx
+    add di, GINT_OFF
+    call ParseAsciiGradeToNode
+
+    mov word ptr [bx+NEXT_OFF], NULL_PTR
+    mov ax, headPtr
+    cmp ax, NULL_PTR
+    jne ADB_hasHead
+    mov headPtr, bx
+    mov tailPtr, bx
+    jmp ADB_incCnt
+
+ADB_hasHead:
+    mov di, tailPtr
+    mov word ptr [di+NEXT_OFF], bx
+    mov tailPtr, bx
+
+ADB_incCnt:
+    inc cnt
+
+ADB_endAdd:
+    pop di
+    pop si
+    pop bx
+    pop ax
+    ret
+AgregarDesdeBuffers ENDP
+
+; ============================================================
+; SwapNodeData: intercambio en bloque (48 bytes) sin tocar NEXT
+; ENTRADA: DI = base nodo A, SI = base nodo B
+; ============================================================
+SwapNodeData PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    mov bx, di         ; BX = A
+    mov dx, si         ; DX = B
+
+    ; A -> swap_block
+    mov si, bx
+    add si, NAME_OFF
+    mov di, offset swap_block
+    mov cx, TEMP_BLOCK_LEN
+    cld
+    rep movsb
+
+    ; B -> A
+    mov si, dx
+    add si, NAME_OFF
+    mov di, bx
+    add di, NAME_OFF
+    mov cx, TEMP_BLOCK_LEN
+    cld
+    rep movsb
+
+    ; swap_block -> B
+    mov si, offset swap_block
+    mov di, dx
+    add di, NAME_OFF
+    mov cx, TEMP_BLOCK_LEN
+    cld
+    rep movsb
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+SwapNodeData ENDP
+
+; ============================================================
+; CompareGrades: Compara dos notas completas
+; ENTRADA: SI = nodo A, DI = nodo B  
+; SALIDA:  CF = 1 si A < B, CF = 0 si A >= B
+; ============================================================
+CompareGrades PROC
+    push ax
+    push bx
+    push dx
+    
+    ; Comparar parte entera
+    mov ax, [si+GINT_OFF]      ; entero A
+    mov bx, [di+GINT_OFF]      ; entero B
+    cmp ax, bx
+    ja  CG_A_GREATER          ; A > B
+    jb  CG_A_LESS             ; A < B
+    
+    ; Enteros iguales, comparar parte alta decimal
+    mov ax, [si+GDHI_OFF]     
+    mov bx, [di+GDHI_OFF]
+    cmp ax, bx
+    ja  CG_A_GREATER
+    jb  CG_A_LESS
+    
+    ; Parte alta igual, comparar parte baja decimal
+    mov ax, [si+GDLO_OFF]
+    mov bx, [di+GDLO_OFF]
+    cmp ax, bx
+    ja  CG_A_GREATER
+    jb  CG_A_LESS
+    
+    ; Completamente iguales
+    clc                       ; CF = 0 (A >= B)
+    jmp CG_END
+
+CG_A_LESS:
+    stc                       ; CF = 1 (A < B)
+    jmp CG_END
+    
+CG_A_GREATER:
+    clc                       ; CF = 0 (A >= B)
+    
+CG_END:
+    pop dx
+    pop bx
+    pop ax
+    ret
+CompareGrades ENDP
+
+; ============================================================
+; Ordenar (Bubble Sort) ASC/DESC - CORREGIDO: Comparación simplificada
+; ============================================================
+OrdenarNotas PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+
+    CALL ClrScreen
+    mov ah, 09h
+    lea dx, mensaje_ordenar
+    int 21h
+
+    mov ah, 01h
+    int 21h
+    mov orderMode, al          ; '1' = ASC, '2' = DES
+
+    cmp orderMode, '1'
+    je  OR_OK
+    cmp orderMode, '2'
+    je  OR_OK
+    jmp OR_DONE
+
+OR_OK:
+    mov al, cnt
+    cmp al, 2
+    jb  OR_SHOW
+
+    ; Construir array de punteros
+    call BuildNodeArray
+
+    mov ch, cnt
+    dec ch                     ; pasadas = cnt-1
+
+OR_PASS:
+    cmp ch, 0
+    je  OR_REBUILD
+
+    mov cl, cnt
+    dec cl                     ; pares = cnt-1
+
+    mov bp, offset nodeArray   ; BP = inicio del array
+
+OR_INNER:
+    cmp cl, 0
+    je  OR_NEXT_PASS
+
+    mov si, [bp]               ; nodo A
+    mov di, [bp+2]             ; nodo B
+
+    ; Comparación completa de notas (entero.decimal)
+    call CompareGrades         ; retorna CF=1 si A < B
+    
+    cmp orderMode, '1'         ; ASC
+    je  OR_ASC_CHECK
+    
+    ; DESC - intercambiar si A < B (queremos B < A)
+    jc  OR_SWAP
+    jmp OR_ADV
+
+OR_ASC_CHECK:
+    ; ASC - intercambiar si A > B 
+    jnc OR_ADV                 ; si A <= B, no intercambiar
+
+OR_SWAP:
+    ; Intercambiar punteros en el array
+    mov ax, [bp]
+    mov bx, [bp+2]
+    mov [bp], bx
+    mov [bp+2], ax
+
+OR_ADV:
+    add bp, 2
+    dec cl
+    jmp OR_INNER
+
+OR_NEXT_PASS:
+    dec ch
+    jmp OR_PASS
+
+OR_REBUILD:
+    ; Reconstruir lista enlazada con el nuevo orden
+    call RebuildLinkedList
+
+OR_SHOW:
+    ; Mostrar lista después de ordenar
+    CALL MostrarListaCompleta
+
+OR_DONE:
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+OrdenarNotas ENDP
+
+; ============================================================
+; Mostrar lista completa
+; ------------------------------------------------------------
+MostrarListaCompleta PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    CALL ClrScreen
+    mov ah, 09h
+    lea dx, mensage_Lista
+    int 21h
+    lea dx, titulos
+    int 21h
+    lea dx, newline
+    int 21h
+
+    mov al, cnt
+    cmp al, 0
+    je FinMostrar
+
+    mov di, headPtr
+    xor bl, bl
+
+ListaLoop:
+    mov ah, 02h
+    mov dl, bl
+    add dl, '1'
+    int 21h
+    mov dl, '.'
+    int 21h
+    mov dl, ' '
+    int 21h
+
+    mov si, di
+    add si, NAME_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, tab
+    int 21h
+
+    mov si, di
+    add si, NOTE_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, newline
+    int 21h
+
+    mov di, [di+NEXT_OFF]
+    inc bl
+    cmp di, NULL_PTR
+    jne ListaLoop
+
+FinMostrar:
+    mov ah, 09h
+    lea dx, msgPresioneTecla
+    int 21h
+    mov ah, 01h
+    int 21h
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+MostrarListaCompleta ENDP
+
+; ============================================================
+; Opcion2/3/4/5
+; ------------------------------------------------------------
+
+Opcion2:                    ; Mostrar estadísticas
+    CALL MostrarEstadisticas
+    jmp MainMenu
+
+Opcion3:
+    CALL SearchInd
+    jmp MainMenu
+
+Opcion4:
+    CALL OrdenarNotas
+    jmp MainMenu
+
+SalirPrograma:
+    mov ah, 4Ch
+    int 21h
 
 END START
