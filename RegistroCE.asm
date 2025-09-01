@@ -39,8 +39,14 @@ mensage_Lista               DB 13,10,'Lista de Estudiantes guardados:',13,10,'--
 titulos                     DB 'Numero  Nombres',9,9,'Notas$'
 
 mensaje_ordenar             DB 13,10,'Como desea ordenar las calificaciones',13,10
-                            DB '1. Asc',13,10,'2. Des',13,10,'$' 
+                            DB '1. Ascendente (menor a mayor)',13,10
+                            DB '2. Descendente (mayor a menor)',13,10,'$' 
 orderMode DB 0              ; '1' asc, '2' des
+
+; Mensajes adicionales para ordenamiento
+mensaje_orden_asc    DB 13,10,'Lista ordenada de forma ASCENDENTE (menor a mayor):',13,10,'$'
+mensaje_orden_desc   DB 13,10,'Lista ordenada de forma DESCENDENTE (mayor a menor):',13,10,'$'
+mensaje_ordenando    DB 13,10,'Ordenando las calificaciones...',13,10,'$'
 
 ; ------------------ Mensajes de Validacion ------------------
 ; Validacion de nombres
@@ -789,31 +795,43 @@ ParseLineaNombreNota ENDP
 BuildNodeArray PROC
     push ax
     push bx
+    push cx
     push di
     push si
 
+    ; Verificar que hay nodos
+    mov al, cnt
+    cmp al, 0
+    je BNA_End
+
+    ; Inicializar
     mov di, headPtr
-    mov si, offset nodeArray
-    xor bl, bl
+    lea si, nodeArray      ; Usar LEA para asegurar direcciÃ³n correcta
+    xor cx, cx             ; Contador
 
 BNA_Loop:
     cmp di, NULL_PTR
     je BNA_End
-    cmp bl, cnt
+    
+    ; Verificar lÃ­mite
+    cmp cl, cnt
     jae BNA_End
 
     ; Guardar puntero en array
     mov [si], di
+    
+    ; Avanzar al siguiente elemento del array
     add si, 2
     
-    ; Siguiente nodo
+    ; Siguiente nodo de la lista
     mov di, [di+NEXT_OFF]
-    inc bl
+    inc cx
     jmp BNA_Loop
 
 BNA_End:
     pop si
     pop di
+    pop cx
     pop bx
     pop ax
     ret
@@ -1047,23 +1065,23 @@ PrintNum3Digitos PROC
     jmp PN3_Fin
 
 PN3_NotZero:
-    ; Para números 1-100, usar división por 10
-    mov bx, ax          ; Guardar número original
-    mov cx, 0           ; Contador de dígitos
+    ; Para nÃºmeros 1-100, usar divisiÃ³n por 10
+    mov bx, ax          ; Guardar nÃºmero original
+    mov cx, 0           ; Contador de dÃ­gitos
     
-    ; Convertir a dígitos (en orden inverso)
+    ; Convertir a dÃ­gitos (en orden inverso)
 PN3_ConvLoop:
     xor dx, dx
     mov ax, bx
     mov bx, 10
     div bx              ; AX = cociente, DX = residuo
-    push dx             ; Guardar dígito en stack
-    inc cx              ; Contar dígito
-    mov bx, ax          ; Preparar para siguiente iteración
+    push dx             ; Guardar dÃ­gito en stack
+    inc cx              ; Contar dÃ­gito
+    mov bx, ax          ; Preparar para siguiente iteraciÃ³n
     cmp ax, 0
     jne PN3_ConvLoop
 
-    ; Imprimir dígitos (en orden correcto)
+    ; Imprimir dÃ­gitos (en orden correcto)
 PN3_PrintLoop:
     pop dx
     add dl, '0'
@@ -1105,7 +1123,7 @@ ME_HayEstudiantes:
     ; Calcular estadisticas
     CALL CalcularEstadisticas
 
-    ; Título
+    ; TÃ­tulo
     mov ah, 09h
     lea dx, mensaje_estadisticas
     int 21h
@@ -1120,11 +1138,11 @@ ME_HayEstudiantes:
     mov al, aprobados
     mov bl, 100
     mul bl              ; AX = aprobados * 100
-    xor dx, dx          ; Limpiar DX para división
+    xor dx, dx          ; Limpiar DX para divisiÃ³n
     xor bx, bx
     mov bl, cnt
     div bx              ; AX = resultado, DX = residuo
-    call PrintNum3Digitos  ; Cambiar a 3 dígitos para manejar 100%
+    call PrintNum3Digitos
     mov dl, '%'
     mov ah, 02h
     int 21h
@@ -1139,11 +1157,11 @@ ME_HayEstudiantes:
     mov al, desaprobados
     mov bl, 100
     mul bl              ; AX = reprobados * 100
-    xor dx, dx          ; Limpiar DX para división
+    xor dx, dx          ; Limpiar DX para divisiÃ³n
     xor bx, bx
     mov bl, cnt
     div bx              ; AX = resultado
-    call PrintNum3Digitos  ; Cambiar a 3 dígitos para manejar 100%
+    call PrintNum3Digitos
     mov dl, '%'
     mov ah, 02h
     int 21h
@@ -1155,14 +1173,14 @@ ME_HayEstudiantes:
     mov ax, promedio_entero
     call PrintNum3Digitos
 
-    ; Mostrar nota máxima
+    ; Mostrar nota mÃ¡xima
     mov ah, 09h
     lea dx, mensaje_nota_maxima
     int 21h
     mov ax, nota_max_int
     call PrintNum3Digitos
 
-    ; Mostrar nota mínima
+    ; Mostrar nota mÃ­nima
     mov ah, 09h
     lea dx, mensaje_nota_minima
     int 21h
@@ -1276,6 +1294,380 @@ PauseExit:
     ret
 SearchInd ENDP
 
+; ============================================================
+; CompareGrades MEJORADA: Compara dos notas completas
+; ENTRADA: SI = nodo A, DI = nodo B  
+; SALIDA:  AL = 0 si A == B, AL = 1 si A > B, AL = 2 si A < B
+; ============================================================
+CompareGrades PROC
+    push bx
+    push cx
+    push dx
+    
+    ; Comparar parte entera
+    mov ax, [si+GINT_OFF]      ; entero A
+    mov bx, [di+GINT_OFF]      ; entero B
+    cmp ax, bx
+    ja  CG_A_GREATER           ; A > B
+    jb  CG_A_LESS              ; A < B
+    
+    ; Enteros iguales, comparar parte alta decimal
+    mov ax, [si+GDHI_OFF]     
+    mov bx, [di+GDHI_OFF]
+    cmp ax, bx
+    ja  CG_A_GREATER
+    jb  CG_A_LESS
+    
+    ; Parte alta igual, comparar parte baja decimal
+    mov ax, [si+GDLO_OFF]
+    mov bx, [di+GDLO_OFF]
+    cmp ax, bx
+    ja  CG_A_GREATER
+    jb  CG_A_LESS
+    
+    ; Completamente iguales
+    mov al, 0                  ; A == B
+    jmp CG_END
+
+CG_A_GREATER:
+    mov al, 1                  ; A > B
+    jmp CG_END
+    
+CG_A_LESS:
+    mov al, 2                  ; A < B
+    
+CG_END:
+    pop dx
+    pop cx
+    pop bx
+    ret
+CompareGrades ENDP
+
+; ============================================================
+; Ordenar (Bubble Sort) - VERSIÃ“N SIMPLE Y DIRECTA
+; ============================================================
+OrdenarNotas PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push bp
+
+    CALL ClrScreen
+    
+    ; Verificar si hay estudiantes
+    mov al, cnt
+    cmp al, 0
+    jne ON_HayEstudiantes
+    
+    mov ah, 09h
+    lea dx, mensaje_sin_estudiantes
+    int 21h
+    mov ah, 01h
+    int 21h
+    jmp OR_FIN
+    
+ON_HayEstudiantes:
+    ; Preguntar orden
+    mov ah, 09h
+    lea dx, mensaje_ordenar
+    int 21h
+
+    mov ah, 01h
+    int 21h
+    mov orderMode, al
+
+    ; Validar opciÃ³n
+    cmp orderMode, '1'
+    je  OR_VALIDO
+    cmp orderMode, '2'
+    je  OR_VALIDO
+    
+    mov ah, 09h
+    lea dx, mensaje_invalida
+    int 21h
+    mov ah, 01h
+    int 21h
+    jmp OR_FIN
+
+OR_VALIDO:
+    ; Verificar si hay al menos 2 estudiantes
+    mov al, cnt
+    cmp al, 2
+    jb  OR_MOSTRAR_ORDENADO
+    
+    ; Construir array de punteros
+    call BuildNodeArray
+
+    ; BUBBLE SORT - ImplementaciÃ³n directa
+    ; Usaremos dos contadores: CH para pasadas externas, CL para internas
+    
+    xor ch, ch
+    mov cl, cnt
+    dec cl                      ; CL = nÃºmero de pasadas (cnt-1)
+    mov ch, cl                  ; CH = guardar nÃºmero de pasadas
+
+OR_PASADA_PRINCIPAL:
+    push cx                     ; Guardar contador de pasadas
+    
+    ; Preparar para comparaciones internas
+    xor ch, ch
+    mov cl, cnt
+    dec cl                      ; CL = nÃºmero de comparaciones (cnt-1)
+    
+    lea si, nodeArray           ; SI apunta al inicio del array
+
+OR_COMPARAR_PAR:
+    push cx                     ; Guardar contador interno
+    push si                     ; Guardar posiciÃ³n actual del array
+    
+    ; Cargar los dos punteros a comparar
+    mov di, [si]                ; DI = primer nodo
+    mov bx, [si+2]              ; BX = segundo nodo
+    
+    ; Comparar las notas enteras
+    mov ax, [di+GINT_OFF]       ; AX = nota entera del primer nodo
+    mov dx, [bx+GINT_OFF]       ; DX = nota entera del segundo nodo
+    
+    ; Decidir si intercambiar basado en el modo
+    cmp orderMode, '1'
+    je  OR_MODO_ASC
+    
+    ; MODO DESCENDENTE: queremos de mayor a menor
+    cmp ax, dx
+    jl  OR_NECESITA_SWAP        ; Si primero < segundo, intercambiar
+    jg  OR_NO_SWAP              ; Si primero > segundo, no intercambiar
+    jmp OR_COMPARAR_DECIMALES   ; Si son iguales, ver decimales
+    
+OR_MODO_ASC:
+    ; MODO ASCENDENTE: queremos de menor a mayor
+    cmp ax, dx
+    jg  OR_NECESITA_SWAP        ; Si primero > segundo, intercambiar
+    jl  OR_NO_SWAP              ; Si primero < segundo, no intercambiar
+    ; Si son iguales, comparar decimales
+
+OR_COMPARAR_DECIMALES:
+    ; Las partes enteras son iguales, comparar decimales
+    ; Primero comparar parte alta de decimales
+    mov ax, [di+GDHI_OFF]
+    mov dx, [bx+GDHI_OFF]
+    
+    cmp orderMode, '1'
+    je  OR_DEC_ASC
+    
+    ; Decimales en modo descendente
+    cmp ax, dx
+    jl  OR_NECESITA_SWAP
+    jg  OR_NO_SWAP
+    ; Si son iguales, comparar parte baja
+    mov ax, [di+GDLO_OFF]
+    mov dx, [bx+GDLO_OFF]
+    cmp ax, dx
+    jl  OR_NECESITA_SWAP
+    jmp OR_NO_SWAP
+    
+OR_DEC_ASC:
+    ; Decimales en modo ascendente
+    cmp ax, dx
+    jg  OR_NECESITA_SWAP
+    jl  OR_NO_SWAP
+    ; Si son iguales, comparar parte baja
+    mov ax, [di+GDLO_OFF]
+    mov dx, [bx+GDLO_OFF]
+    cmp ax, dx
+    jg  OR_NECESITA_SWAP
+    jmp OR_NO_SWAP
+
+OR_NECESITA_SWAP:
+    ; Intercambiar los punteros en el array
+    pop si                      ; Recuperar posiciÃ³n del array
+    push si                     ; Guardarla de nuevo
+    
+    mov ax, [si]                ; AX = primer puntero
+    mov dx, [si+2]              ; DX = segundo puntero
+    mov [si], dx                ; Primer slot = segundo puntero
+    mov [si+2], ax              ; Segundo slot = primer puntero
+
+OR_NO_SWAP:
+    pop si                      ; Recuperar posiciÃ³n del array
+    add si, 2                   ; Avanzar al siguiente par
+    pop cx                      ; Recuperar contador interno
+    loop OR_COMPARAR_PAR
+    
+    pop cx                      ; Recuperar contador de pasadas
+    dec ch
+    jnz OR_PASADA_PRINCIPAL
+
+    ; Reconstruir la lista enlazada con el nuevo orden
+    call RebuildLinkedList
+
+OR_MOSTRAR_ORDENADO:
+    ; Mostrar la lista ordenada
+    CALL ClrScreen
+    
+    ; Mostrar mensaje segÃºn el orden
+    cmp orderMode, '1'
+    je  OR_MSG_ASC
+    
+    mov ah, 09h
+    lea dx, mensaje_orden_desc
+    int 21h
+    jmp OR_MOSTRAR_LISTA
+    
+OR_MSG_ASC:
+    mov ah, 09h
+    lea dx, mensaje_orden_asc
+    int 21h
+
+OR_MOSTRAR_LISTA:
+    ; Mostrar tÃ­tulos
+    mov ah, 09h
+    lea dx, titulos
+    int 21h
+    lea dx, newline
+    int 21h
+
+    ; Mostrar la lista desde el head actualizado
+    mov di, headPtr
+    mov bl, 1                   ; Contador para numeraciÃ³n
+
+OR_LOOP_MOSTRAR:
+    cmp di, NULL_PTR
+    je OR_FIN_MOSTRAR
+    
+    ; Mostrar nÃºmero
+    mov ah, 02h
+    mov dl, bl
+    add dl, '0'
+    int 21h
+    mov dl, '.'
+    int 21h
+    mov dl, ' '
+    int 21h
+
+    ; Mostrar nombre
+    push di
+    add di, NAME_OFF
+    mov si, di
+    call ImprimirCadena
+    pop di
+
+    ; Tab
+    mov ah, 09h
+    lea dx, tab
+    int 21h
+
+    ; Mostrar nota
+    push di
+    add di, NOTE_OFF
+    mov si, di
+    call ImprimirCadena
+    pop di
+
+    ; Nueva lÃ­nea
+    mov ah, 09h
+    lea dx, newline
+    int 21h
+
+    ; Siguiente nodo
+    mov di, [di+NEXT_OFF]
+    inc bl
+    jmp OR_LOOP_MOSTRAR
+
+OR_FIN_MOSTRAR:
+    mov ah, 09h
+    lea dx, msgPresioneTecla
+    int 21h
+    mov ah, 01h
+    int 21h
+
+OR_FIN:
+    pop bp
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+OrdenarNotas ENDP
+
+; ============================================================
+; Mostrar lista completa
+; ============================================================
+MostrarListaCompleta PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+
+    CALL ClrScreen
+    mov ah, 09h
+    lea dx, mensage_Lista
+    int 21h
+    lea dx, titulos
+    int 21h
+    lea dx, newline
+    int 21h
+
+    mov al, cnt
+    cmp al, 0
+    je FinMostrar
+
+    mov di, headPtr
+    xor bl, bl
+
+ListaLoop:
+    mov ah, 02h
+    mov dl, bl
+    add dl, '1'
+    int 21h
+    mov dl, '.'
+    int 21h
+    mov dl, ' '
+    int 21h
+
+    mov si, di
+    add si, NAME_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, tab
+    int 21h
+
+    mov si, di
+    add si, NOTE_OFF
+    call ImprimirCadena
+
+    mov ah, 09h
+    lea dx, newline
+    int 21h
+
+    mov di, [di+NEXT_OFF]
+    inc bl
+    cmp di, NULL_PTR
+    jne ListaLoop
+
+FinMostrar:
+    mov ah, 09h
+    lea dx, msgPresioneTecla
+    int 21h
+    mov ah, 01h
+    int 21h
+
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+MostrarListaCompleta ENDP
+
 ; ===========================================================
 ; Opcion 1: ingreso por linea completa CON VALIDACIONES
 ; ============================================================
@@ -1386,253 +1778,6 @@ ADB_endAdd:
     pop ax
     ret
 AgregarDesdeBuffers ENDP
-
-; ============================================================
-; CompareGrades: Compara dos notas completas
-; ENTRADA: SI = nodo A, DI = nodo B  
-; SALIDA:  CF = 1 si A < B, CF = 0 si A >= B
-; ============================================================
-CompareGrades PROC
-    push ax
-    push bx
-    push dx
-    
-    ; Comparar parte entera
-    mov ax, [si+GINT_OFF]      ; entero A
-    mov bx, [di+GINT_OFF]      ; entero B
-    cmp ax, bx
-    ja  CG_A_GREATER          ; A > B
-    jb  CG_A_LESS             ; A < B
-    
-    ; Enteros iguales, comparar parte alta decimal
-    mov ax, [si+GDHI_OFF]     
-    mov bx, [di+GDHI_OFF]
-    cmp ax, bx
-    ja  CG_A_GREATER
-    jb  CG_A_LESS
-    
-    ; Parte alta igual, comparar parte baja decimal
-    mov ax, [si+GDLO_OFF]
-    mov bx, [di+GDLO_OFF]
-    cmp ax, bx
-    ja  CG_A_GREATER
-    jb  CG_A_LESS
-    
-    ; Completamente iguales
-    clc                       ; CF = 0 (A >= B)
-    jmp CG_END
-
-CG_A_LESS:
-    stc                       ; CF = 1 (A < B)
-    jmp CG_END
-    
-CG_A_GREATER:
-    clc                       ; CF = 0 (A >= B)
-    
-CG_END:
-    pop dx
-    pop bx
-    pop ax
-    ret
-CompareGrades ENDP
-
-; ============================================================
-; Ordenar (Bubble Sort) ASC/DESC
-; ============================================================
-OrdenarNotas PROC
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-    push bp
-
-    CALL ClrScreen
-    mov ah, 09h
-    lea dx, mensaje_ordenar
-    int 21h
-
-    mov ah, 01h
-    int 21h
-    mov orderMode, al          ; '1' = ASC, '2' = DES
-
-    cmp orderMode, '1'
-    je  OR_OK
-    cmp orderMode, '2'
-    je  OR_OK
-    jmp OR_DONE
-
-OR_OK:
-    mov al, cnt
-    cmp al, 2
-    jb  OR_SHOW
-
-    ; Construir array de punteros
-    call BuildNodeArray
-
-    mov ch, cnt
-    dec ch                     ; pasadas = cnt-1
-
-OR_PASS:
-    cmp ch, 0
-    je  OR_REBUILD
-
-    mov cl, cnt
-    dec cl                     ; pares = cnt-1
-
-    mov bp, offset nodeArray   ; BP = inicio del array
-
-OR_INNER:
-    cmp cl, 0
-    je  OR_NEXT_PASS
-
-    mov si, [bp]               ; nodo A
-    mov di, [bp+2]             ; nodo B
-
-    ; Comparación completa de notas
-    call CompareGrades         ; retorna CF=1 si A < B
-    
-    cmp orderMode, '1'         ; ASC
-    je  OR_ASC_CHECK
-    
-    ; DESC - intercambiar si A < B (queremos mayor a menor)
-    jc  OR_SWAP
-    jmp OR_ADV
-
-OR_ASC_CHECK:
-    ; ASC - intercambiar si A > B (CF=0 y A != B)
-    ; Si CF=1, A < B, no intercambiar (está bien ordenado)
-    ; Si CF=0, A >= B, necesitamos verificar si A > B para intercambiar
-    jc  OR_ADV                 ; Si A < B, no intercambiar
-    
-    ; Verificar si A == B comparando todos los valores
-    mov ax, [si+GINT_OFF]
-    mov bx, [di+GINT_OFF]
-    cmp ax, bx
-    jne OR_SWAP                ; Si enteros diferentes, A > B, intercambiar
-    
-    mov ax, [si+GDHI_OFF]
-    mov bx, [di+GDHI_OFF]
-    cmp ax, bx
-    jne OR_SWAP                ; Si decimales altos diferentes, A > B, intercambiar
-    
-    mov ax, [si+GDLO_OFF]
-    mov bx, [di+GDLO_OFF]
-    cmp ax, bx
-    jne OR_SWAP                ; Si decimales bajos diferentes, A > B, intercambiar
-    
-    ; Si llegamos aquí, A == B, no intercambiar
-    jmp OR_ADV
-
-OR_SWAP:
-    ; Intercambiar punteros en el array
-    mov ax, [bp]
-    mov bx, [bp+2]
-    mov [bp], bx
-    mov [bp+2], ax
-
-OR_ADV:
-    add bp, 2
-    dec cl
-    jmp OR_INNER
-
-OR_NEXT_PASS:
-    dec ch
-    jmp OR_PASS
-
-OR_REBUILD:
-    ; Reconstruir lista enlazada con el nuevo orden
-    call RebuildLinkedList
-
-OR_SHOW:
-    ; Mostrar lista después de ordenar
-    CALL MostrarListaCompleta
-
-OR_DONE:
-    pop bp
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-OrdenarNotas ENDP
-
-; ============================================================
-; Mostrar lista completa
-; ============================================================
-MostrarListaCompleta PROC
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-
-    CALL ClrScreen
-    mov ah, 09h
-    lea dx, mensage_Lista
-    int 21h
-    lea dx, titulos
-    int 21h
-    lea dx, newline
-    int 21h
-
-    mov al, cnt
-    cmp al, 0
-    je FinMostrar
-
-    mov di, headPtr
-    xor bl, bl
-
-ListaLoop:
-    mov ah, 02h
-    mov dl, bl
-    add dl, '1'
-    int 21h
-    mov dl, '.'
-    int 21h
-    mov dl, ' '
-    int 21h
-
-    mov si, di
-    add si, NAME_OFF
-    call ImprimirCadena
-
-    mov ah, 09h
-    lea dx, tab
-    int 21h
-
-    mov si, di
-    add si, NOTE_OFF
-    call ImprimirCadena
-
-    mov ah, 09h
-    lea dx, newline
-    int 21h
-
-    mov di, [di+NEXT_OFF]
-    inc bl
-    cmp di, NULL_PTR
-    jne ListaLoop
-
-FinMostrar:
-    mov ah, 09h
-    lea dx, msgPresioneTecla
-    int 21h
-    mov ah, 01h
-    int 21h
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-MostrarListaCompleta ENDP
 
 ; ============================================================
 ; Opcion2/3/4/5
