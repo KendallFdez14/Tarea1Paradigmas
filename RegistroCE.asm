@@ -31,7 +31,7 @@ mensageMenu DB 13, 10, 'Bienvenidos/as a Registro CE', 13, 10
             DB      'Digite: $'
 
 mensaje_ingresoNombre DB 13, 10, 'Ingresar Nombre Apellido1 Apellido2: $'
-mensage_ingresoNota   DB 13, 10, 'Ingresar nota: $'
+mensage_ingresoNota   DB 13, 10, 'Ingresar nota (0-100, max 5 decimales): $'
 mensage_Lista  DB 13, 10, 'Lista de Estudiantes guardados:', 13, 10, '-------------------', 13, 10, '$'
 titulos DB 'Numero  Nombres', 9,9,'Notas$'
 newline   DB 13, 10, '$'
@@ -43,6 +43,12 @@ msgPresioneTecla DB 13, 10, 'Presione cualquier tecla$'
 mensaje_procesar db 13,10,"Procesado: $"  
 mensajes_aprobados db 'Porcentaje de aprobados: $'
 mensajes_reprobados db 13,10,'Porcentaje de reprobados: $' 
+
+; NUEVOS MENSAJES DE ERROR PARA VALIDACION DE NOTAS
+mensaje_nota_invalida DB 13, 10, 'ERROR: La nota debe estar entre 0 y 100$'
+mensaje_decimales_invalidos DB 13, 10, 'ERROR: Maximo 5 decimales permitidos$'
+mensaje_formato_invalido DB 13, 10, 'ERROR: Formato invalido. Use solo numeros y punto decimal$'
+mensaje_reintentar DB 13, 10, 'Presione cualquier tecla para reintentar...$'
 
 mensaje_promedio db 13,10,'Promedio general: $'
 mensaje_nota_maxima db 13,10,'Nota maxima: $'
@@ -60,6 +66,7 @@ notasdecimales_array  dw estudiantesMax * 2 dup(0)    ;Parte decimal de las nota
 entero_temp dw 0
 decimal_temp dw 2 dup(0)         ; 32 bits (2 words: parte baja + parte alta)
 decimal_encontrado db 0
+contador_decimales db 0          ; NUEVA VARIABLE para contar decimales
   
 ; Contadores de aprobaciones
 aprobados db 0
@@ -171,7 +178,7 @@ FinAgregar:
     RET
 AgregarEstudiante ENDP   
 
-; InputProc - Lee nombre y nota del estudiante
+; InputProc - Lee nombre y nota del estudiante CON VALIDACION
 InputProc PROC
     PUSH AX
     PUSH BX
@@ -206,6 +213,7 @@ InputProc PROC
     LEA SI, estudianteBuffer + 2   ; Fuente: buffer+2 (saltar cabecera)
     CALL CopiarCadena
 
+PedirNota:
     ; Pedir nota
     MOV AH, 09h
     LEA DX, mensage_ingresoNota
@@ -222,6 +230,21 @@ InputProc PROC
     MOV BL, notasBuffer[1]
     MOV notasBuffer[BX+2], '$'
     
+    ; VALIDAR LA NOTA INGRESADA
+    LEA SI, notasBuffer + 2
+    CALL ValidarNota
+    CMP AL, 1               ; AL = 1 si la nota es valida
+    JE NotaValida           ; Si es valida, continuar
+    
+    ; Si no es valida, mostrar mensaje de error y repetir
+    MOV AH, 09h
+    LEA DX, mensaje_reintentar
+    INT 21h
+    MOV AH, 01h
+    INT 21h
+    JMP PedirNota           ; Volver a pedir la nota
+
+NotaValida:
     ; Copiar nota a la lista
     XOR AX, AX
     MOV AL, cnt
@@ -248,6 +271,137 @@ InputProc PROC
     RET
 InputProc ENDP
 
+; NUEVA FUNCION: ValidarNota - Valida que la nota este en rango 0-100 y max 5 decimales
+; Entrada: SI apunta al string de la nota
+; Salida: AL = 1 si valida, AL = 0 si invalida
+ValidarNota PROC
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    PUSH SI
+    
+    ; Reiniciar variables
+    MOV entero_temp, 0
+    MOV decimal_temp, 0
+    MOV decimal_temp + 2, 0
+    MOV decimal_encontrado, 0
+    MOV contador_decimales, 0
+    
+    ; Verificar si el string esta vacio
+    CMP BYTE PTR [SI], '$'
+    JE NotaInvalida
+    CMP BYTE PTR [SI], 13
+    JE NotaInvalida
+    
+ValidarEntero:
+    MOV AL, [SI]
+    CMP AL, '$'
+    JE FinValidacion
+    CMP AL, 13
+    JE FinValidacion
+    CMP AL, 10
+    JE FinValidacion
+    CMP AL, '.'
+    JE ValidarDecimal
+    
+    ; Verificar que sea digito
+    CMP AL, '0'
+    JB FormatoInvalido
+    CMP AL, '9'
+    JA FormatoInvalido
+    
+    ; Convertir y acumular
+    SUB AL, '0'
+    MOV AH, 0
+    PUSH AX
+    
+    ; entero_temp = entero_temp * 10
+    MOV AX, entero_temp
+    MOV DX, 10
+    MUL DX
+    MOV entero_temp, AX
+    
+    ; entero_temp = entero_temp + digito
+    POP AX
+    ADD entero_temp, AX
+    
+    ; Verificar que no exceda 100 en la parte entera
+    CMP entero_temp, 100
+    JA NotaFueraRango
+    
+    INC SI
+    JMP ValidarEntero
+
+ValidarDecimal:
+    MOV decimal_encontrado, 1
+    INC SI
+    
+ValidarDecimales:
+    MOV AL, [SI]
+    CMP AL, '$'
+    JE FinValidacion
+    CMP AL, 13
+    JE FinValidacion
+    CMP AL, 10
+    JE FinValidacion
+    
+    ; Verificar que sea digito
+    CMP AL, '0'
+    JB FormatoInvalido
+    CMP AL, '9'
+    JA FormatoInvalido
+    
+    ; Incrementar contador de decimales
+    INC contador_decimales
+    CMP contador_decimales, 5
+    JA DemasiadosDecimales
+    
+    INC SI
+    JMP ValidarDecimales
+
+FinValidacion:
+    ; Verificar rango final (0-100)
+    CMP entero_temp, 100
+    JA NotaFueraRango
+    
+    ; Si llego aqui, la nota es valida
+    MOV AL, 1
+    JMP FinValidarNota
+
+NotaFueraRango:
+    MOV AH, 09h
+    LEA DX, mensaje_nota_invalida
+    INT 21h
+    MOV AL, 0
+    JMP FinValidarNota
+
+DemasiadosDecimales:
+    MOV AH, 09h
+    LEA DX, mensaje_decimales_invalidos
+    INT 21h
+    MOV AL, 0
+    JMP FinValidarNota
+
+FormatoInvalido:
+    MOV AH, 09h
+    LEA DX, mensaje_formato_invalido
+    INT 21h
+    MOV AL, 0
+    JMP FinValidarNota
+
+NotaInvalida:
+    MOV AH, 09h
+    LEA DX, mensaje_formato_invalido
+    INT 21h
+    MOV AL, 0
+
+FinValidarNota:
+    POP SI
+    POP DX
+    POP CX
+    POP BX
+    RET
+ValidarNota ENDP
 
 ; SearchInd - Buscar estudiante por indice
 SearchInd PROC
@@ -515,8 +669,13 @@ OrdenarNotas PROC
     RET
 OrdenarNotas ENDP
 
-; ClrScreen - Limpiar pantalla
+; ClrScreen - Limpiar pantalla MEJORADO para proteger mensajes
 ClrScreen:
+    ; Desactivar el cursor (opcional, para evitar parpadeo)
+    MOV AH, 01h          ; Funcion de cursor
+    MOV CX, 2607h        ; Cursor invisible (bit 5 = 1)
+    INT 10h
+    
     MOV AX, 0600h        ; AH=06h (scroll), AL=00h (clear)
     MOV BH, 07h          ; Atributo (gris sobre negro)
     MOV CX, 0000h        ; Esquina superior izquierda
@@ -527,6 +686,11 @@ ClrScreen:
     MOV AH, 02h          ; Funcion posicionar cursor
     MOV BH, 00h          ; Pagina 0
     MOV DX, 0000h        ; Fila 0, Columna 0
+    INT 10h
+    
+    ; Reactivar el cursor
+    MOV AH, 01h          ; Funcion de cursor
+    MOV CX, 0607h        ; Cursor normal
     INT 10h
     RET 
 
