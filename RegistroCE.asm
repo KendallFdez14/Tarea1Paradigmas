@@ -50,7 +50,7 @@ mensaje_ordenando    DB 13,10,'Ordenando las calificaciones...',13,10,'$'
 
 ; ------------------ Mensajes de Validacion ------------------
 ; Validacion de nombres
-mensaje_nombre_invalido     DB 13,10,'ERROR: Debe ingresar exactamente 3 palabras (Nombre Apellido1 Apellido2)$'
+mensaje_nombre_invalido     DB 13,10,'ERROR: Debe ingresar exactamente 2 o 3 palabras (Nombre Apellido1 Apellido2)$'
 mensaje_palabra_invalida    DB 13,10,'ERROR: Solo se permiten letras en el nombre$'
 mensaje_palabra_corta       DB 13,10,'ERROR: Cada palabra debe tener al menos 2 caracteres$'
 mensaje_linea_vacia         DB 13,10,'ERROR: La linea no puede estar vacia$'
@@ -78,18 +78,18 @@ suma_total_lo       DW 0      ; Parte baja de la suma total
 suma_total_hi       DW 0      ; Parte alta de la suma total
 promedio_entero     DW 0      ; Parte entera del promedio
 promedio_decimal    DW 0      ; Parte decimal del promedio
-nota_max_int        DW 0      ; Parte entera de nota maxima
-nota_max_dec_lo     DW 0      ; Decimal de nota maxima (low)
-nota_max_dec_hi     DW 0      ; Decimal de nota maxima (high)
-nota_min_int        DW 100    ; Parte entera de nota minima
-nota_min_dec_lo     DW 0FFFFh ; Decimal de nota minima (low)
-nota_min_dec_hi     DW 0FFFFh ; Decimal de nota minima (high)
+nota_max_int        DW 0      ; Parte entera de nota máxima
+nota_max_dec_lo     DW 0      ; Decimal de nota máxima (low)
+nota_max_dec_hi     DW 0      ; Decimal de nota máxima (high)
+nota_min_int        DW 100    ; Parte entera de nota mínima
+nota_min_dec_lo     DW 0FFFFh ; Decimal de nota mínima (low)
+nota_min_dec_hi     DW 0FFFFh ; Decimal de nota mínima (high)
 
 ; ------------------ Lista enlazada --------------------------
 ; Nodo:
 ;  name[NAME_LEN+1 '$'], gradeStr[NOTE_LEN+1 '$'], gradeInt (word),
 ;  gradeDecLo (word), gradeDecHi (word), next (word)
-; Tamano por nodo: 31 + 11 + 2 + 2 + 2 + 2 = 50 bytes
+; Tamaño por nodo: 31 + 11 + 2 + 2 + 2 + 2 = 50 bytes
 NODE_SIZE           EQU 50
 
 nodes               DB estudiantesMax * NODE_SIZE DUP(?)
@@ -224,8 +224,7 @@ TerminarCadena0Ah ENDP
 
 ; Obtener offset del nodo por indice (0..cnt-1)
 ;  ENTRADA: AL = indice
-;  SALIDA:  DI = offset del nodo  
-
+;  SALIDA:  DI = offset del nodo
 GetNodeByIndex PROC
     push ax
     xor ah, ah
@@ -239,9 +238,9 @@ GetNodeByIndex ENDP
 
 ; ============================================================
 ; VALIDACION DEL NOMBRE COMPLETO
-; Valida que la cadena tenga exactamente 3 palabras válidas
+; Valida que la cadena tenga exactamente 3 palabras validas
 ; ENTRADA: SI apunta al string del nombre completo
-; SALIDA: AL = 1 si válido, AL = 0 si inválido
+; SALIDA: AL = 1 si válido, AL = 0 si invalido
 ; ============================================================    
 
 ValidarNombreCompleto PROC
@@ -320,16 +319,19 @@ VNC_FinPalabra:
     jmp VNC_SaltarEspacios
 
 VNC_FinCadena:
-    ; Verificar que tengamos exactamente 3 palabras
+    ; Verificar que tengamos 2 o 3 palabras
+    cmp cx, 2
+    jb  VNC_NotValid       ; menos de 2 -> invalido
     cmp cx, 3
-    je VNC_NombreValido
-    
-    ; No son 3 palabras
+    jbe VNC_NombreValido   ; 2 o 3 -> valido
+
+VNC_NotValid:
     mov ah, 09h
     lea dx, mensaje_nombre_invalido
     int 21h
     mov al, 0
     jmp VNC_Fin
+
 
 VNC_CaracterInvalido:
     mov ah, 09h
@@ -361,7 +363,7 @@ ValidarNombreCompleto ENDP
 ; VALIDACION DE NOTA
 ; Valida que la nota este en rango 0-100 y maximo 5 decimales
 ; ENTRADA: SI apunta al string de la nota
-; SALIDA: AL = 1 si valida, AL = 0 si invalida
+; SALIDA: AL = 1 si válida, AL = 0 si invalida
 ; ============================================================
 ValidarNota PROC
     push bx
@@ -376,7 +378,7 @@ ValidarNota PROC
     mov decimal_encontrado, 0
     mov dec_count, 0
     
-    ; Verificar si el string este vacio
+    ; Verificar si el string esta vacio
     cmp BYTE PTR [si], '$'
     je VN_NotaInvalida
     cmp BYTE PTR [si], 13
@@ -393,7 +395,7 @@ VN_ValidarEntero:
     cmp al, '.'
     je VN_ValidarDecimal
     
-    ; Verificar que sea dígito
+    ; Verificar que sea digito
     cmp al, '0'
     jb VN_FormatoInvalido
     cmp al, '9'
@@ -514,13 +516,13 @@ ParseAsciiGradeToNode PROC
 P_IntLoop:
     mov al, [si]
     cmp al, '$'
-    je  P_Finish
+    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
     cmp al, '.'
     je  P_DecStart
     cmp al, 13
-    je  P_Finish
+    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
     cmp al, 10
-    je  P_Finish
+    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
     ; digito -> AX
     sub al, '0'
     mov ah, 0
@@ -569,46 +571,52 @@ P_DecLoop:
     add dec_temp_lo, ax
     adc dec_temp_hi, 0
     ; contar digitos (max 5)
-    mov al, dec_count
-    cmp al, 5
-    jae P_SkipInc
-    inc dec_count
-P_SkipInc:
+    inc dec_count      ; CAMBIO: Siempre incrementar
+    cmp dec_count, 5
+    jae P_Scale        ; Si ya tenemos 5, no leer más
     inc si
     jmp P_DecLoop
 
 ; Escalar a 5 digitos: multiplicar por 10^(5 - dec_count)
 P_Scale:
     mov al, dec_count
-    mov ah, 0
-    mov bx, 5
-    cmp ax, bx
-    jae P_Save
-    ; reps = 5 - dec_count
-    mov bl, 5
-    sub bl, al
-    mov cl, bl
+    cmp al, 5
+    jae P_Save          ; Si ya tenemos 5 decimales, guardar
+    
+    ; Si dec_count < 5, necesitamos escalar
+    ; Calcular cuántas veces multiplicar por 10
+    mov cl, 5
+    sub cl, al          ; CL = 5 - dec_count
+    
+    ; Si CL es 0, no hacer nada
+    cmp cl, 0
+    je P_Save
+    
 ScaleLoop:
+    ; Multiplicar (dec_hi:dec_lo) por 10
     mov ax, dec_temp_lo
     mov bx, 10
-    mul bx          ; DX:AX
+    mul bx              ; DX:AX = dec_temp_lo * 10
     mov dec_temp_lo, ax
-    mov si, dx
+    mov si, dx          ; Guardar carry
+    
     mov ax, dec_temp_hi
     mov bx, 10
-    mul bx
-    add ax, si
+    mul bx              ; DX:AX = dec_temp_hi * 10
+    add ax, si          ; Añadir carry de la multiplicación anterior
     mov dec_temp_hi, ax
+    
     dec cl
     jnz ScaleLoop
 
 P_Save:
+    ; Guardar valores en el nodo
     mov ax, entero_temp
-    mov [di], ax
+    mov [di], ax        ; Guardar parte entera
     mov ax, dec_temp_lo
-    mov [di+2], ax
+    mov [di+2], ax      ; Guardar parte baja decimal
     mov ax, dec_temp_hi
-    mov [di+4], ax
+    mov [di+4], ax      ; Guardar parte alta decimal
 
 P_Finish:
     pop dx
@@ -632,7 +640,7 @@ ParseLineaNombreNota PROC
     push di
     push bp
     
-    ; Guardar SI original en el stack para restaurarlo después
+    ; Guardar SI original en el stack para restaurarlo despues
     mov bp, sp
     mov [bp-2], si
     push si
@@ -668,7 +676,7 @@ PL_TrimEnd:
     dec di
     jmp PL_TrimEnd
 
-    ; Buscar el último espacio (separador nombre-nota)
+    ; Buscar el ultimo espacio (separador nombre-nota)
 PL_FindSplit:
     mov bx, di
 PL_FindSpaceBack:
@@ -716,7 +724,7 @@ PL_EndCopyNote:
     pop si
     push si
     mov bx, dx          ; BX apunta al espacio separador
-    dec bx              ; BX apunta al último carácter del nombre
+    dec bx              ; BX apunta al ultimo caracter del nombre
 
     ; Recortar espacios al final del nombre
 PL_TrimNameEnd:
@@ -748,9 +756,9 @@ PL_EndCopyName:
     cmp al, 1
     jne PL_NombreInvalido
 
-    ; Si llegamos aquí, tanto nombre como nota son válidos
+    ; Si llegamos aqui, tanto nombre como nota son validos
     pop si
-    clc                 ; CF = 0 (éxito)
+    clc                 ; CF = 0 (exito)
     jmp PL_Fin
 
 PL_LineaVacia:
@@ -770,13 +778,13 @@ PL_FormatoIncorrecto:
     jmp PL_Fin
 
 PL_NotaInvalida:
-    ; El mensaje de error ya se muestra en ValidarNota
+    ; El mensaje de error ya se mostrara en ValidarNota
     pop si
     stc                 ; CF = 1 (error)
     jmp PL_Fin
 
 PL_NombreInvalido:
-    ; El mensaje de error ya se muestra en ValidarNombreCompleto
+    ; El mensaje de error ya se mostrara en ValidarNombreCompleto
     pop si
     stc                 ; CF = 1 (error)
 
@@ -807,14 +815,14 @@ BuildNodeArray PROC
 
     ; Inicializar
     mov di, headPtr
-    lea si, nodeArray      ; Usar LEA para asegurar dirección correcta
+    lea si, nodeArray      ; Usar LEA para asegurar direccion correcta
     xor cx, cx             ; Contador
 
 BNA_Loop:
     cmp di, NULL_PTR
     je BNA_End
     
-    ; Verificar límite
+    ; Verificar limite
     cmp cl, cnt
     jae BNA_End
 
@@ -923,7 +931,7 @@ CE_Loop:
     ; Obtener nota entera
     mov ax, [di+GINT_OFF]
     
-    ; Verificar aprobado/reprobado (70 o mas aprueba)
+    ; Verificar aprobado/reprobado (70 o más aprueba)
     cmp ax, 70
     jl CE_Reprobado
     inc aprobados
@@ -937,7 +945,7 @@ CE_ContinuarStats:
     add suma_total_lo, ax
     adc suma_total_hi, 0
 
-    ; Comparar con máxima
+    ; Comparar con maxima
     mov bx, nota_max_int
     cmp ax, bx
     jl CE_NoEsMaxima
@@ -960,7 +968,7 @@ CE_NuevaMaxima:
     mov nota_max_dec_hi, bx
 
 CE_NoEsMaxima:
-    ; Comparar con mínima
+    ; Comparar con minima
     mov bx, nota_min_int
     cmp ax, bx
     jg CE_NoEsMinima
@@ -1076,7 +1084,7 @@ PN3_ConvLoop:
     mov ax, bx
     mov bx, 10
     div bx              ; AX = cociente, DX = residuo
-    push dx             ; Guardar digito en stack
+    push dx             ; Guardar dígito en stack
     inc cx              ; Contar digito
     mov bx, ax          ; Preparar para siguiente iteracion
     cmp ax, 0
@@ -1158,7 +1166,7 @@ ME_HayEstudiantes:
     mov al, desaprobados
     mov bl, 100
     mul bl              ; AX = reprobados * 100
-    xor dx, dx          ; Limpiar DX para division
+    xor dx, dx          ; Limpiar DX para división
     xor bx, bx
     mov bl, cnt
     div bx              ; AX = resultado
@@ -1218,14 +1226,64 @@ SearchInd PROC
     lea dx, mensaje_posicion
     int 21h
 
+        ; Leer primer carácter
     mov ah, 01h
     int 21h
-    cmp al, '1'
-    jb Inval
+    cmp al, 13              ; ENTER?
+    je  Inval               ; vacio -> invalido
+    cmp al, '0'
+    jb  Inval
+    cmp al, '9'
+    ja  Inval
+    mov bl, al              ; BL = primer dígito (ASCII)
+
+    ; Leer segundo caracter
+    mov ah, 01h
+    int 21h
+    cmp al, 13              ; ENTER despues de 1 digito -> número de 1 digito
+    je  SI_OneDigit
+
+    ; Si no fue ENTER, debe ser segundo digito
+    cmp al, '0'
+    jb  Inval
+    cmp al, '9'
+    ja  Inval
+    mov bh, al              ; BH = segundo digito (ASCII)
+
+    ; Consumir ENTER obligatorio tras el segundo digito
+    mov ah, 01h
+    int 21h
+    cmp al, 13
+    jne Inval
+
+    ; Convertir 2 dígitos: (BL*10 + BH)
+    mov al, bl
     sub al, '0'
+    mov ah, 0
+    mov cl, 10
+    mul cl                  ; AX = (primer)*10
+    mov dl, bh
+    sub dl, '0'
+    add al, dl              ; AL = valor 10..15
+    jmp SI_NumberReady
+
+SI_OneDigit:
+    ; Convertir 1 digito: BL
+    mov al, bl
+    sub al, '0'             ; AL = 0..9
+
+SI_NumberReady:
+    ; Rango permitido 1..15
+    cmp al, 1
+    jb  Inval
+    cmp al, 15
+    ja  Inval
+
+    ; Validar contra cantidad existente cnt
     mov bl, cnt
     cmp al, bl
-    ja Inval
+    ja  Inval
+
 
     dec al
 
@@ -1247,14 +1305,28 @@ Found:
     lea dx, mensaje_mostrar_dato
     int 21h
 
-    mov ah, 02h
+        ; AL contiene el indice 0-based. Imprimir (AL+1)
+    inc al                   ; 1..15
+    cmp al, 10
+    jb  SI_PrintOne
+
+    ; 10..15
+    call PrintNum2Digitos
+    jmp SI_AfterNum
+
+SI_PrintOne:
+    add al, '0'
     mov dl, al
-    add dl, '1'
+    mov ah, 02h
     int 21h
+
+SI_AfterNum:
     mov dl, '.'
+    mov ah, 02h
     int 21h
     mov dl, ' '
     int 21h
+
 
     mov si, di
     add si, NAME_OFF
@@ -1344,9 +1416,9 @@ CG_END:
     ret
 CompareGrades ENDP
 
-; ============================================================
+; =====================
 ; Ordenar (Bubble Sort)
-; ============================================================
+; =====================
 OrdenarNotas PROC
     push ax
     push bx
@@ -1402,11 +1474,12 @@ OR_VALIDO:
     ; Construir array de punteros
     call BuildNodeArray
 
+    ; BUBBLE SORT
     ; Usaremos dos contadores: CH para pasadas externas, CL para internas
     
     xor ch, ch
     mov cl, cnt
-    dec cl                      ; CL = numero de pasadas (cnt-1)
+    dec cl                      ; CL = número de pasadas (cnt-1)
     mov ch, cl                  ; CH = guardar número de pasadas
 
 OR_PASADA_PRINCIPAL:
@@ -1415,7 +1488,7 @@ OR_PASADA_PRINCIPAL:
     ; Preparar para comparaciones internas
     xor ch, ch
     mov cl, cnt
-    dec cl                      ; CL = numero de comparaciones (cnt-1)
+    dec cl                      ; CL = número de comparaciones (cnt-1)
     
     lea si, nodeArray           ; SI apunta al inicio del array
 
@@ -1522,7 +1595,7 @@ OR_MSG_ASC:
     int 21h
 
 OR_MOSTRAR_LISTA:
-    ; Mostrar titulos
+    ; Mostrar títulos
     mov ah, 09h
     lea dx, titulos
     int 21h
@@ -1537,7 +1610,7 @@ OR_LOOP_MOSTRAR:
     cmp di, NULL_PTR
     je OR_FIN_MOSTRAR
     
-    ; Mostrar número
+    ; Mostrar numero
     mov ah, 02h
     mov dl, bl
     add dl, '0'
@@ -1566,7 +1639,7 @@ OR_LOOP_MOSTRAR:
     call ImprimirCadena
     pop di
 
-    ; Nueva linea
+    ; Nueva línea
     mov ah, 09h
     lea dx, newline
     int 21h
@@ -1797,4 +1870,5 @@ Opcion4:
 SalirPrograma:
     mov ah, 4Ch
     int 21h
+
 END START
