@@ -50,7 +50,7 @@ mensaje_ordenando    DB 13,10,'Ordenando las calificaciones...',13,10,'$'
 
 ; ------------------ Mensajes de Validacion ------------------
 ; Validacion de nombres
-mensaje_nombre_invalido     DB 13,10,'ERROR: Debe ingresar exactamente 3 palabras (Nombre Apellido1 Apellido2)$'
+mensaje_nombre_invalido     DB 13,10,'ERROR: Debe ingresar exactamente 2 o 3 palabras (Nombre Apellido1 Apellido2)$'
 mensaje_palabra_invalida    DB 13,10,'ERROR: Solo se permiten letras en el nombre$'
 mensaje_palabra_corta       DB 13,10,'ERROR: Cada palabra debe tener al menos 2 caracteres$'
 mensaje_linea_vacia         DB 13,10,'ERROR: La linea no puede estar vacia$'
@@ -319,16 +319,19 @@ VNC_FinPalabra:
     jmp VNC_SaltarEspacios
 
 VNC_FinCadena:
-    ; Verificar que tengamos exactamente 3 palabras
+    ; Verificar que tengamos 2 o 3 palabras
+    cmp cx, 2
+    jb  VNC_NotValid       ; menos de 2 -> inválido
     cmp cx, 3
-    je VNC_NombreValido
-    
-    ; No son 3 palabras
+    jbe VNC_NombreValido   ; 2 o 3 -> válido
+
+VNC_NotValid:
     mov ah, 09h
     lea dx, mensaje_nombre_invalido
     int 21h
     mov al, 0
     jmp VNC_Fin
+
 
 VNC_CaracterInvalido:
     mov ah, 09h
