@@ -64,12 +64,13 @@ mensaje_reintentar          DB 13,10,'Presione cualquier tecla para reintentar..
 
 ; ------------------ Mensajes de Estadisticas ----------------
 mensaje_estadisticas        DB 13,10,'=== ESTADISTICAS ===',13,10,'$'
-mensajes_aprobados         DB 'Aprobados: $'
-mensajes_reprobados        DB 13,10,'Reprobados: $' 
+mensajes_aprobados         DB 'Porcentaje de aprobados: $'
+mensajes_reprobados        DB 13,10,'Porcentaje de reprobados: $' 
 mensaje_promedio           DB 13,10,'Promedio general: $'
 mensaje_nota_maxima        DB 13,10,'Nota maxima: $'
 mensaje_nota_minima        DB 13,10,'Nota minima: $'
 mensaje_sin_estudiantes    DB 13,10,'No hay estudiantes registrados.',13,10,'$'
+mensaje_de                 DB ' de $'
 
 ; ------------------ Variables de Estadisticas ---------------
 aprobados           DB 0
@@ -84,6 +85,10 @@ nota_max_dec_hi     DW 0      ; Decimal de nota máxima (high)
 nota_min_int        DW 100    ; Parte entera de nota mínima
 nota_min_dec_lo     DW 0FFFFh ; Decimal de nota mínima (low)
 nota_min_dec_hi     DW 0FFFFh ; Decimal de nota mínima (high)
+
+; Variables temporales para calculos decimales
+suma_dec_lo         DW 0      ; Suma de decimales (parte baja)
+suma_dec_hi         DW 0      ; Suma de decimales (parte alta)
 
 ; ------------------ Lista enlazada --------------------------
 ; Nodo:
@@ -240,7 +245,7 @@ GetNodeByIndex ENDP
 ; VALIDACION DEL NOMBRE COMPLETO
 ; Valida que la cadena tenga exactamente 3 palabras validas
 ; ENTRADA: SI apunta al string del nombre completo
-; SALIDA: AL = 1 si válido, AL = 0 si invalido
+; SALIDA: AL = 1 si valido, AL = 0 si invalido
 ; ============================================================    
 
 ValidarNombreCompleto PROC
@@ -363,7 +368,7 @@ ValidarNombreCompleto ENDP
 ; VALIDACION DE NOTA
 ; Valida que la nota este en rango 0-100 y maximo 5 decimales
 ; ENTRADA: SI apunta al string de la nota
-; SALIDA: AL = 1 si válida, AL = 0 si invalida
+; SALIDA: AL = 1 si valida, AL = 0 si invalida
 ; ============================================================
 ValidarNota PROC
     push bx
@@ -436,7 +441,7 @@ VN_ValidarDecimales:
     cmp al, 10
     je VN_FinValidacion
     
-    ; Verificar que sea dígito
+    ; Verificar que sea digito
     cmp al, '0'
     jb VN_FormatoInvalido
     cmp al, '9'
@@ -516,13 +521,13 @@ ParseAsciiGradeToNode PROC
 P_IntLoop:
     mov al, [si]
     cmp al, '$'
-    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
+    je  P_Scale        ;Ir a P_Scale en lugar de P_Finish
     cmp al, '.'
     je  P_DecStart
     cmp al, 13
-    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
+    je  P_Scale        ;Ir a P_Scale en lugar de P_Finish
     cmp al, 10
-    je  P_Scale        ; CAMBIO AQUI: Ir a P_Scale en lugar de P_Finish
+    je  P_Scale        ;Ir a P_Scale en lugar de P_Finish
     ; digito -> AX
     sub al, '0'
     mov ah, 0
@@ -566,7 +571,7 @@ P_DecLoop:
     mul bx
     add ax, cx
     mov dec_temp_hi, ax
-    ; + dígito
+    ; + digito
     pop ax
     add dec_temp_lo, ax
     adc dec_temp_hi, 0
@@ -584,7 +589,7 @@ P_Scale:
     jae P_Save          ; Si ya tenemos 5 decimales, guardar
     
     ; Si dec_count < 5, necesitamos escalar
-    ; Calcular cuántas veces multiplicar por 10
+    ; Calcular cuantas veces multiplicar por 10
     mov cl, 5
     sub cl, al          ; CL = 5 - dec_count
     
@@ -603,7 +608,7 @@ ScaleLoop:
     mov ax, dec_temp_hi
     mov bx, 10
     mul bx              ; DX:AX = dec_temp_hi * 10
-    add ax, si          ; Añadir carry de la multiplicación anterior
+    add ax, si          ; Agregar carry de la multiplicacion anterior
     mov dec_temp_hi, ax
     
     dec cl
@@ -630,7 +635,7 @@ ParseAsciiGradeToNode ENDP
 ; RECORRIDO Y VALIDACION DE LINEA COMPLETA
 ; Separa nombre y nota Y valida ambos
 ; ENTRADA: SI apunta a la linea completa
-; SALIDA: CF=0 si éxito, CF=1 si error
+; SALIDA: CF=0 si exito, CF=1 si error
 ; ============================================================
 ParseLineaNombreNota PROC
     push ax
@@ -893,7 +898,7 @@ RLL_END:
 RebuildLinkedList ENDP
 
 ; ============================================================
-; Calcular Estadisticas
+; Calcular Estadisticas con Decimales
 ; ============================================================
 CalcularEstadisticas PROC
     push ax
@@ -913,6 +918,8 @@ CalcularEstadisticas PROC
     mov desaprobados, 0
     mov suma_total_lo, 0
     mov suma_total_hi, 0
+    mov suma_dec_lo, 0
+    mov suma_dec_hi, 0
     mov nota_max_int, 0
     mov nota_max_dec_lo, 0
     mov nota_max_dec_hi, 0
@@ -931,7 +938,7 @@ CE_Loop:
     ; Obtener nota entera
     mov ax, [di+GINT_OFF]
     
-    ; Verificar aprobado/reprobado (70 o más aprueba)
+    ; Verificar aprobado/reprobado (70 o mas aprueba)
     cmp ax, 70
     jl CE_Reprobado
     inc aprobados
@@ -941,11 +948,18 @@ CE_Reprobado:
     inc desaprobados
 
 CE_ContinuarStats:
-    ; Sumar al total (solo parte entera para simplificar)
+    ; Sumar parte entera al total
     add suma_total_lo, ax
     adc suma_total_hi, 0
+    
+    ; Sumar parte decimal
+    mov ax, [di+GDLO_OFF]
+    add suma_dec_lo, ax
+    mov ax, [di+GDHI_OFF]
+    adc suma_dec_hi, ax
 
     ; Comparar con maxima
+    mov ax, [di+GINT_OFF]
     mov bx, nota_max_int
     cmp ax, bx
     jl CE_NoEsMaxima
@@ -961,6 +975,7 @@ CE_ContinuarStats:
     jle CE_NoEsMaxima
 
 CE_NuevaMaxima:
+    mov ax, [di+GINT_OFF]
     mov nota_max_int, ax
     mov bx, [di+GDLO_OFF]
     mov nota_max_dec_lo, bx
@@ -969,6 +984,7 @@ CE_NuevaMaxima:
 
 CE_NoEsMaxima:
     ; Comparar con minima
+    mov ax, [di+GINT_OFF]
     mov bx, nota_min_int
     cmp ax, bx
     jg CE_NoEsMinima
@@ -984,6 +1000,7 @@ CE_NoEsMaxima:
     jge CE_NoEsMinima
 
 CE_NuevaMinima:
+    mov ax, [di+GINT_OFF]
     mov nota_min_int, ax
     mov bx, [di+GDLO_OFF]
     mov nota_min_dec_lo, bx
@@ -997,6 +1014,17 @@ CE_NoEsMinima:
     jmp CE_Loop
 
 CE_FinLoop:
+    ; Convertir suma decimal a enteros
+    mov ax, suma_dec_lo
+    mov dx, suma_dec_hi
+    ; Dividir por 100000 para obtener parte entera
+    mov bx, 0FFFFh      ; Aproximacion para 100000
+    cmp dx, 1
+    jb CE_NoOverflow
+    add suma_total_lo, 1
+    adc suma_total_hi, 0
+CE_NoOverflow:
+
     ; Calcular promedio
     mov ax, suma_total_lo
     xor dx, dx
@@ -1004,14 +1032,15 @@ CE_FinLoop:
     mov bl, cnt
     div bx
     mov promedio_entero, ax
-
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
+    
+    ; Calcular decimales del promedio
+    mov ax, dx          ; residuo
+    mov bx, 100
+    mul bx              ; amplificar para 2 decimales
+    xor bx, bx
+    mov bl, cnt
+    div bx
+    mov promedio_decimal, ax
 
 CE_NoEstudiantes:
     pop di
@@ -1021,107 +1050,7 @@ CE_NoEstudiantes:
     pop bx
     pop ax
     ret
-CalcularEstadisticas ENDP    
-; ============================================================
-; Imprimir nota completa con decimales
-; Entrada: AX = parte entera, BX = dec_lo, CX = dec_hi
-; ============================================================
-PrintNotaCompleta PROC
-    push ax
-    push bx
-    push cx
-    push dx
-    push si
-    push di
-    
-    ; Imprimir parte entera
-    call PrintNum3Digitos
-    
-    ; Verificar si tiene decimales (diferentes de 0)
-    cmp bx, 0
-    jne PNC_TieneDecimales
-    cmp cx, 0
-    jne PNC_TieneDecimales
-    jmp PNC_Fin  ; No tiene decimales
-    
-PNC_TieneDecimales:
-    ; Imprimir punto decimal
-    mov dl, '.'
-    mov ah, 02h
-    int 21h
-    
-    ; Metodo simplificado: convertir solo los primeros 2 digitos decimales
-    ; Dividir cx:bx por 1000 para obtener los 2 primeros digitos
-    mov ax, cx
-    mov dx, bx
-    
-    ; Si cx es 0, trabajar solo con bx
-    cmp cx, 0
-    jne PNC_ConBorrarAlto
-    
-    ; Solo parte baja, dividir por 1000
-    mov ax, bx
-    cmp ax, 1000
-    jb PNC_MenorMil
-    
-    mov dx, 0
-    mov cx, 1000
-    div cx          ; AX = primer digito, DX = resto
-    
-    ; Imprimir primer digito
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    
-    ; Segundo digito del resto
-    mov ax, dx
-    mov dx, 0
-    mov cx, 100
-    div cx          ; AX = segundo digito
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    jmp PNC_Fin
-
-PNC_MenorMil:
-    ; Numero menor a 1000, imprimir 2 ceros o digitos apropiados
-    mov dx, 0
-    mov cx, 100
-    div cx          ; AX = primer digito decimal
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    
-    ; Segundo digito
-    mov ax, dx      ; resto de division anterior
-    mov dx, 0
-    mov cx, 10
-    div cx
-    add al, '0'
-    mov dl, al
-    mov ah, 02h
-    int 21h
-    jmp PNC_Fin
-
-PNC_ConBorrarAlto:
-    ; Hay parte alta, simplificar imprimiendo solo "xx"
-    mov dl, '0'
-    mov ah, 02h
-    int 21h
-    int 21h         ; Imprimir "00" por simplicidad
-
-PNC_Fin:
-    pop di
-    pop si
-    pop dx
-    pop cx
-    pop bx
-    pop ax
-    ret
-PrintNotaCompleta ENDP
+CalcularEstadisticas ENDP
 
 ; ============================================================
 ; Imprimir numero de 2 digitos (0-99)
@@ -1132,12 +1061,9 @@ PrintNum2Digitos PROC
     push bx
     push dx
 
-    cmp ax, 99          ; Verificar limite superior
-    ja  PN2_Error
-    
-    xor dx, dx          ; Limpiar DX antes de division
-    mov bx, 10
-    div bx              ; AX = decenas, DX = unidades
+    xor ah, ah
+    mov bl, 10
+    div bl              ; AL = decenas, AH = unidades
     
     ; Imprimir decenas
     add al, '0'
@@ -1145,22 +1071,13 @@ PrintNum2Digitos PROC
     mov ah, 02h
     int 21h
     
-    ; Imprimir unidades (DX contiene el residuo)
-    mov ax, dx          ; Mover residuo a AX
+    ; Imprimir unidades
+    mov al, ah
     add al, '0'
     mov dl, al
     mov ah, 02h
     int 21h
-    jmp PN2_End
 
-PN2_Error:
-    ; Si hay error, imprimir "99"
-    mov dl, '9'
-    mov ah, 02h
-    int 21h
-    int 21h
-
-PN2_End:
     pop dx
     pop bx
     pop ax
@@ -1186,17 +1103,13 @@ PrintNum3Digitos PROC
     jmp PN3_Fin
 
 PN3_NotZero:
-    ; Verificar limite superior
-    cmp ax, 999
-    ja PN3_Error
-    
-    ; Para numeros 1-999, usar division por 10
+    ; Para numeros 1-100, usar division por 10
     mov bx, ax          ; Guardar numero original
     mov cx, 0           ; Contador de digitos
     
     ; Convertir a digitos (en orden inverso)
 PN3_ConvLoop:
-    xor dx, dx          ; Limpiar DX antes de division
+    xor dx, dx
     mov ax, bx
     mov bx, 10
     div bx              ; AX = cociente, DX = residuo
@@ -1213,15 +1126,6 @@ PN3_PrintLoop:
     mov ah, 02h
     int 21h
     loop PN3_PrintLoop
-    jmp PN3_Fin
-
-PN3_Error:
-    ; Si hay error, imprimir "999"
-    mov dl, '9'
-    mov ah, 02h
-    int 21h
-    int 21h
-    int 21h
 
 PN3_Fin:
     pop dx
@@ -1232,7 +1136,89 @@ PN3_Fin:
 PrintNum3Digitos ENDP
 
 ; ============================================================
-; MostrarEstadisticas
+; Imprimir Decimales de Nota
+; Entrada: BX = dec_lo, CX = dec_hi (escalado a 100000)
+; ============================================================
+PrintDecimalesNota PROC
+    push ax
+    push bx
+    push cx
+    push dx
+    
+    ; Si ambos son 0, no hay decimales
+    or bx, cx
+    jz PDN_Fin
+    
+    ; Imprimir punto decimal
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Convertir a 3 digitos decimales
+    mov ax, bx          ; parte baja
+    mov dx, cx          ; parte alta
+    
+    ; Dividir por 1000 para obtener primeros 2 decimales
+    mov bx, 1000
+    div bx
+    
+    ; Imprimir hasta 3 digitos
+    push dx             ; guardar residuo
+    
+    ; Primer digito
+    mov bl, 100
+    div bl
+    add al, '0'
+    mov dl, al
+    push ax
+    mov ah, 02h
+    int 21h
+    pop ax
+    
+    ; Segundo digito  
+    mov al, ah
+    xor ah, ah
+    mov bl, 10
+    div bl
+    add al, '0'
+    mov dl, al
+    push ax
+    mov ah, 02h
+    int 21h
+    pop ax
+    
+    ; Tercer digito si no es 0
+    mov dl, ah
+    cmp dl, 0
+    je PDN_CheckMore
+    add dl, '0'
+    mov ah, 02h
+    int 21h
+    
+PDN_CheckMore:
+    pop dx              ; recuperar residuo
+    ; Si hay más decimales significativos, mostrarlos
+    cmp dx, 100
+    jb PDN_Fin
+    
+    mov ax, dx
+    mov bl, 100
+    div bl
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+
+PDN_Fin:
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    ret
+PrintDecimalesNota ENDP
+
+; ============================================================
+; Mostrar Estadisticas
 ; ============================================================
 MostrarEstadisticas PROC
     push ax
@@ -1262,109 +1248,195 @@ ME_HayEstudiantes:
     lea dx, mensaje_estadisticas
     int 21h
 
-    ; Mostrar aprobados
+    ; ===== Mostrar porcentaje de aprobados =====
     mov ah, 09h
     lea dx, mensajes_aprobados
     int 21h
     
-    ; Verificar division por cero
-    mov bl, cnt
-    cmp bl, 0
-    je ME_FinMostrar
-    
     ; Calcular porcentaje aprobados = (aprobados * 100) / cnt
     xor ax, ax
     mov al, aprobados
-    mov dx, 100
-    mul dx              ; AX = aprobados * 100
-    xor dx, dx          ; Limpiar DX para division
+    mov bl, 100
+    mul bl              ; AX = aprobados * 100
+    xor dx, dx
     xor bx, bx
     mov bl, cnt
-    div bx              ; AX = resultado, DX = residuo
+    div bx              ; AX = porcentaje, DX = residuo
+    
+    push dx             ; Guardar residuo para decimales
     call PrintNum3Digitos
+    
+    ; Si no es 100%, mostrar decimales
+    cmp ax, 100
+    je ME_NoDecAprobados
+    
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    ; Calcular 2 decimales del porcentaje
+    pop ax              ; residuo
+    mov bl, 10
+    mul bl              ; amplificar
+    xor bx, bx
+    mov bl, cnt
+    div bx
+    
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    mov dl, '0'         ; segundo decimal
+    int 21h
+    jmp ME_FinPorcAprobados
+    
+ME_NoDecAprobados:
+    pop ax              ; limpiar stack
+
+ME_FinPorcAprobados:
     mov dl, '%'
     mov ah, 02h
     int 21h
     
-    ; Mostrar cantidad entre parentesis
+    ; Mostrar (X de Y)
     mov dl, ' '
-    mov ah, 02h
     int 21h
     mov dl, '('
     int 21h
     xor ax, ax
     mov al, aprobados
-    call PrintNum3Digitos
+    call PrintNum2Digitos
+    
+    mov ah, 09h
+    lea dx, mensaje_de
+    int 21h
+    
+    xor ax, ax
+    mov al, cnt
+    call PrintNum2Digitos
     mov dl, ')'
     mov ah, 02h
     int 21h
 
-    ; Mostrar reprobados
+    ; ===== Mostrar porcentaje de reprobados =====
     mov ah, 09h
     lea dx, mensajes_reprobados
     int 21h
     
-    ; Calcular porcentaje reprobados = (desaprobados * 100) / cnt
     xor ax, ax
     mov al, desaprobados
-    mov dx, 100
-    mul dx              ; AX = reprobados * 100
-    xor dx, dx          ; Limpiar DX para division
+    mov bl, 100
+    mul bl
+    xor dx, dx
     xor bx, bx
     mov bl, cnt
-    div bx              ; AX = resultado
+    div bx
+    
+    push dx
     call PrintNum3Digitos
+    
+    ; Si no es 0%, mostrar decimales
+    cmp ax, 0
+    je ME_NoDecReprobados
+    
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    pop ax
+    mov bl, 10
+    mul bl
+    xor bx, bx
+    mov bl, cnt
+    div bx
+    
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    
+    mov dl, '0'
+    int 21h
+    jmp ME_FinPorcReprobados
+    
+ME_NoDecReprobados:
+    pop ax
+
+ME_FinPorcReprobados:
     mov dl, '%'
     mov ah, 02h
     int 21h
     
-    ; Mostrar cantidad entre parentesis
+    ; Mostrar (X de Y)
     mov dl, ' '
-    mov ah, 02h
     int 21h
     mov dl, '('
     int 21h
     xor ax, ax
     mov al, desaprobados
-    call PrintNum3Digitos
+    call PrintNum2Digitos
+    
+    mov ah, 09h
+    lea dx, mensaje_de
+    int 21h
+    
+    xor ax, ax
+    mov al, cnt
+    call PrintNum2Digitos
     mov dl, ')'
     mov ah, 02h
     int 21h
 
-    ; Mostrar promedio general (simplificado)
+    ; ===== Mostrar promedio general con decimales =====
     mov ah, 09h
     lea dx, mensaje_promedio
     int 21h
- 
-    ; Calcular promedio simple: suma_total_lo / cnt
-    mov ax, suma_total_lo
-    xor dx, dx
-    xor bx, bx
-    mov bl, cnt
-    cmp bl, 0           ; Verificar division por cero
-    je ME_PromedioError
-    div bx              ; AX = promedio entero
+    
+    mov ax, promedio_entero
     call PrintNum3Digitos
+    
+    ; Mostrar decimales del promedio
+    mov dl, '.'
+    mov ah, 02h
+    int 21h
+    
+    mov ax, promedio_decimal
+    mov bl, 10
+    div bl
+    add al, '0'
+    mov dl, al
+    mov ah, 02h
+    int 21h
+    mov dl, ah
+    add dl, '0'
+    int 21h
 
-ME_PromedioError:
-
-    ; Mostrar nota maxima con decimales
+    ; ===== Mostrar nota maxima con decimales =====
     mov ah, 09h
     lea dx, mensaje_nota_maxima
     int 21h
+    
     mov ax, nota_max_int
+    call PrintNum3Digitos
+    
     mov bx, nota_max_dec_lo
     mov cx, nota_max_dec_hi
-    call PrintNotaCompleta
+    call PrintDecimalesNota
 
-    ; Mostrar nota minima con decimales
+    ; ===== Mostrar nota minima con decimales =====
     mov ah, 09h
     lea dx, mensaje_nota_minima
     int 21h
+    
     mov ax, nota_min_int
+    call PrintNum3Digitos
+    
     mov bx, nota_min_dec_lo
     mov cx, nota_min_dec_hi
-    call PrintNotaCompleta
+    cmp bx, 0FFFFh
+    je ME_FinMostrar
+    call PrintDecimalesNota
 
 ME_FinMostrar:
     mov ah, 09h
@@ -1396,10 +1468,10 @@ SearchInd PROC
     lea dx, mensaje_posicion
     int 21h
 
-    ; Leer primer caracter
+        ; Leer primer caracter
     mov ah, 01h
     int 21h
-    cmp al, 13              ; ENTER?
+    cmp al, 13              ; ENTER
     je  Inval               ; vacio -> invalido
     cmp al, '0'
     jb  Inval
@@ -1410,7 +1482,7 @@ SearchInd PROC
     ; Leer segundo caracter
     mov ah, 01h
     int 21h
-    cmp al, 13              ; ENTER despues de 1 digito -> numero de 1 digito
+    cmp al, 13              ; ENTER despues de 1 digito -> número de 1 digito
     je  SI_OneDigit
 
     ; Si no fue ENTER, debe ser segundo digito
@@ -1426,7 +1498,7 @@ SearchInd PROC
     cmp al, 13
     jne Inval
 
-    ; Convertir 2 digitos: (BL*10 + BH)
+    ; Convertir 2 dígitos: (BL*10 + BH)
     mov al, bl
     sub al, '0'
     mov ah, 0
@@ -1434,43 +1506,40 @@ SearchInd PROC
     mul cl                  ; AX = (primer)*10
     mov dl, bh
     sub dl, '0'
-    xor dh, dh
-    add ax, dx              ; AX = valor 10..99
+    add al, dl              ; AL = valor 10..15
     jmp SI_NumberReady
 
 SI_OneDigit:
     ; Convertir 1 digito: BL
     mov al, bl
     sub al, '0'             ; AL = 0..9
-    mov ah, 0               ; Limpiar AH
 
 SI_NumberReady:
     ; Rango permitido 1..15
-    cmp ax, 1
+    cmp al, 1
     jb  Inval
-    cmp ax, 15
+    cmp al, 15
     ja  Inval
 
     ; Validar contra cantidad existente cnt
-    xor bx, bx
     mov bl, cnt
-    cmp ax, bx
+    cmp al, bl
     ja  Inval
 
-    dec ax                  ; Convertir a indice base 0
-    push ax                 ; Guardar indice para mostrar despues
+
+    dec al
 
     mov di, headPtr
     cmp di, NULL_PTR
-    je Inval_Pop
+    je Inval
 
-    mov cx, ax              ; CX = indice
+    mov cl, al
     jcxz Found
 NextHop:
     mov di, [di+NEXT_OFF]
     cmp di, NULL_PTR
-    je Inval_Pop
-    dec cx
+    je Inval
+    dec cl
     jnz NextHop
 
 Found:
@@ -1478,10 +1547,9 @@ Found:
     lea dx, mensaje_mostrar_dato
     int 21h
 
-    ; Recuperar indice original y sumar 1 para mostrar
-    pop ax
-    inc ax                  ; Convertir a base 1 para mostrar
-    cmp ax, 10
+        ; AL contiene el indice 0-based. Imprimir (AL+1)
+    inc al                   ; 1..15
+    cmp al, 10
     jb  SI_PrintOne
 
     ; 10..15
@@ -1501,6 +1569,7 @@ SI_AfterNum:
     mov dl, ' '
     int 21h
 
+
     mov si, di
     add si, NAME_OFF
     call ImprimirCadena
@@ -1519,8 +1588,6 @@ SI_AfterNum:
 
     jmp PauseExit
 
-Inval_Pop:
-    pop ax              ; Limpiar stack
 Inval:
     mov ah, 09h
     lea dx, mensaje_invalidaposicion
@@ -1770,7 +1837,7 @@ OR_MSG_ASC:
     int 21h
 
 OR_MOSTRAR_LISTA:
-    ; Mostrar títulos
+    ; Mostrar titulos
     mov ah, 09h
     lea dx, titulos
     int 21h
@@ -1814,7 +1881,7 @@ OR_LOOP_MOSTRAR:
     call ImprimirCadena
     pop di
 
-    ; Nueva línea
+    ; Nueva linea
     mov ah, 09h
     lea dx, newline
     int 21h
