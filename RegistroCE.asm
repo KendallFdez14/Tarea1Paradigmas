@@ -1,3 +1,8 @@
+;--Referencias--
+;https://chatgpt.com/
+;https://www.youtube.com/watch?v=Wz-8QaCdXx0
+;https://www.youtube.com/watch?v=jCpSiaGeycM
+;----
 .MODEL SMALL
 .STACK 100h
 
